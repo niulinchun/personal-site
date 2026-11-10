@@ -264,15 +264,47 @@ git config --global init.defaultBranch main
 私有仓库拉取推荐给 VPS 配一条 **只读 Deploy Key**（不暴露你自己账号的私钥）：
 
 ```bash
-ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+ssh-keygen -t ed25519 -C "racknerd" -N "" -f ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub
 # 把输出整行复制 → GitHub 仓库页 → Settings → Deploy keys → Add deploy key
-# 名字随意（如 vps-a），不要勾选 Allow write access
+# Title 填 racknerd，不要勾选 Allow write access（只读足够拉代码）
 
-# 首次连接 GitHub 会问指纹，回答 yes（测试一个拉取类交互最稳的是 Clone）
+# 验证（首次会问 Are you sure you want to continue connecting → 输入 yes）：
+ssh -T git@github.com
+# 成功标志：Hi niulinchun! You've successfully authenticated...
+
 git clone git@github.com:niulinchun/personal-site.git /opt/personal-site
 cd /opt/personal-site
 ```
+
+> **本次实测**：RackNerd 在美国境内，VPS 直连 `github.com:22` 顺畅，
+> 不需要本机那套"SSH 走 443"的备用配置（那是国内网络对出站 22 拦截的对策）。
+> 本机连不到 VPS 时的备用入口：RackNerd 客户区（client area）→ 服务器面板 → VNC/Console 网页终端。
+
+#### 个人 SSH key vs Deploy key——别再搞混
+
+| | **个人 SSH key** | **Deploy key** |
+| --- | --- | --- |
+| 添加位置 | Settings → SSH and GPG keys（账号级） | 仓库 → Settings → Deploy keys（仓库级） |
+| 作用范围 | 你账号有权限的**所有**仓库 | **只这一个仓库** |
+| 默认权限 | 跟随你在该仓库的读写权限 | **只读**；勾 Allow write access 才能推 |
+| 典型场景 | 开发机（日常 `git push`） | 服务器拉部署代码 |
+| 泄露后果 | 严重，可写你全部仓库 | 轻，仅一个承诺只读的匿名读者 |
+
+一台机器一把钥匙：本机放个人 key，VPS 放 deploy key。同一台服务器要拉多个私有仓库时按仓库分别发，不要把个人 key 复制上去。
+
+#### ssh-keygen 参数拆解
+
+`ssh-keygen` 生成的是一对：公钥（贴出去、登记到 GitHub）、私钥（留在机器上、用于签名应答，绝不出户）。
+
+| 参数 | 含义 |
+| --- | --- |
+| `-t ed25519` | 密钥算法。Ed25519 现代推荐：短、快、强度高，不用挑位数；`-t rsa -b 4096` 是老教程写法，现在没理由用它 |
+| `-C "racknerd"` | 纯注释，拼在公钥末尾，不参与加密，只供人眼辨认钥匙归属。钥匙多的以后这一眼救命，习惯写主机名/用途 |
+| `-N ""` | 私钥口令设为空。服务器密钥必须无口令——否则每次 pull 要人工输密码，crontab 无人值守直接瘫痪。代价是拿到私钥文件者即可冒用，靠 `chmod 600` + 目录 700 兜底 |
+| `-f ~/.ssh/id_ed25519` | 输出路径（公钥自动加 `.pub`）。用默认文件名还有个福利：ssh 会自动尝试 `~/.ssh/id_ed25519`，无需再配 `IdentityFile` |
+
+验证链路：GitHub 存公钥 → 连接时 GitHub 发随机挑战 → 本机用私钥签名回传 → GitHub 拿存的公钥验签 → `Hi 用户名!`。全程私钥不离开机器。
 
 没有 git 就 scp 传目录备用：`scp -r D:\workspace\python_projects\personal-site\* user@VPS_IP:/opt/personal-site/`
 
