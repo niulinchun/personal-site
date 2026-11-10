@@ -80,7 +80,7 @@ python manage.py test
 cd D:\workspace\python_projects\personal-site
 git init -b main
 git config user.name "niulinchun"
-git config user.email "niulinchun@users.noreply.github.com"
+git config user.email "18041033@qq.com"
 git add -A
 git commit -m "init: personal site (blog/chat/ledger + Docker deploy)"
 ```
@@ -208,7 +208,7 @@ RackNerd 镜像一般自带 git，没有就装：
 ```bash
 git --version || sudo apt update && sudo apt install -y git
 git config --global user.name "niulinchun"
-git config --global user.email "niulinchun@users.noreply.github.com"
+git config --global user.email "18041033@qq.com"
 git config --global init.defaultBranch main
 ```
 
