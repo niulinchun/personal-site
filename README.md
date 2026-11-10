@@ -250,6 +250,42 @@ sudo systemctl enable --now docker
 docker compose version   # 确认 compose v2 可用
 ```
 
+#### 实测：Ubuntu 20.04 (focal) 上脚本失败与修复
+
+**失败现象与因果链**（RackNerd 这台机是 focal，2025-05 起 EOL）：
+
+```
+DEPRECATION WARNING: This Linux distribution (ubuntu focal) reached end-of-life ...
+E: Unable to locate package docker-model-plugin
+Failed to enable unit: Unit file docker.service does not exist.
+```
+
+脚本虽警示 focal 已停维护，但仍继续执行且默认安装列表里带了新组件
+`docker-model-plugin`（2025 年新增的 AI Model Runner）——这个包在 **focal 对应的 Docker
+官方 apt 源里根本不存在**，apt 整单拒绝 → 一个包都没装上 → 后续 enable 报无此 unit。
+是"系统太老 + 新组件缺收录"，不是网络或命令问题。
+
+**修复**：跑过脚本后官方源其实已经配好
+（`/etc/apt/sources.list.d/docker.list` 指向 focal stable），
+跳过缺的组件手动装其余全套即可：
+
+```bash
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+systemctl enable --now docker
+
+docker --version            # Docker 28.1.1
+docker compose version      # v2.35.1 —— compose 流程必需的最关键一项
+docker run --rm hello-world # 拉镜像验一把（说明 Docker Hub 网络也通）
+```
+
+> focal EOL 只是没有宿主机的 apt 安全更新了；对我们影响极小——博客跑在自含镜像里，
+> 宿主机只承担转发与存储。要根除可以以后空闲时 `do-release-upgrade` 升 22.04/24.04，
+> 不要和部署挤在一起做。
+
 ### 2) 配 Git + 取代码
 
 RackNerd 镜像一般自带 git，没有就装：
@@ -469,6 +505,7 @@ docker compose up -d nginx
 
 | 现象 | 处理 |
 | --- | --- |
+| 装 Docker 脚本失败：`Unable to locate package docker-model-plugin`（focal EOL 缺新组件） | 官方源已被脚本配好，跳过该包手动装其余组件：见第三节 1) 实测块 |
 | `DisallowedHost` | `.env` 的 `DJANGO_ALLOWED_HOSTS` 少了你的域名或 `web` |
 | 403 `CSRF`（HTTPS） | `.env` 的 `DJANGO_CSRF_TRUSTED_ORIGINS` 加 `https://域名` |
 | nginx 起不来 | 443 的证书没签（先走 4) 步签证书再 `up nginx`）；或 DOMAIN 带了前导空格 |
