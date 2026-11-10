@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}登录 · 小站{% endblock %}
+
+{% block content %}
+<div class="container my-5" style="max-width: 420px;">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h1 class="h4 mb-3 text-center">🔐 登录小站</h1>
+      {% if form.errors %}
+      <div class="alert alert-danger py-2">用户名或密码不对，请重试。</div>
+      {% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label" for="id_username">用户名</label>
+          <input type="text" name="username" id="id_username" class="form-control"
+                 autofocus value="{{ form.username.value|default:'' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="id_password">密码</label>
+          <input type="password" name="password" id="id_password" class="form-control">
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn btn-primary w-100">登录</button>
+      </form>
+      <p class="text-muted small mt-3 mb-0 text-center">仅个人账号使用；无注册功能。</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

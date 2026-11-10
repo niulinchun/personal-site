@@ -1,0 +1,61 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="{% block robots %}index,follow{% endblock %}">
+  <title>{% block title %}小站{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/icons/bootstrap-icons.css' %}">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<nav class="navbar navbar-expand-md navbar-dark bg-dark site-navbar">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-semibold" href="{% url 'blog:index' %}">📚 我的小站</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#site-nav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="site-nav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link {% block nav_blog %}{% endblock %}" href="{% url 'blog:index' %}">博客</a></li>
+        <li class="nav-item"><a class="nav-link {% block nav_chat %}{% endblock %}" href="{% url 'chat:index' %}">GLM 问答</a></li>
+        <li class="nav-item"><a class="nav-link {% block nav_ledger %}{% endblock %}" href="{% url 'ledger:index' %}">记账</a></li>
+      </ul>
+      <ul class="navbar-nav ms-auto">
+        {% if user.is_authenticated %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'blog:manage' %}"><i class="bi bi-pencil-square"></i> 文章管理</a></li>
+          <li class="nav-item"><a class="nav-link" href="/admin/"><i class="bi bi-gear"></i> 后台管理</a></li>
+          <li class="nav-item">
+            <form method="post" action="/admin/logout/" class="d-inline">{% csrf_token %}
+              <button type="submit" class="nav-link btn btn-link text-light">退出</button>
+            </form>
+          </li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link" href="/admin/login/">登录</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+
+{% if messages %}
+<div class="container-fluid px-3 mt-2">
+  {% for message in messages %}
+  <div class="alert alert-warning alert-dismissible fade show mb-1" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% block content %}{% endblock %}
+
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+{% block extra_js %}{% endblock %}
+{% block page_js %}{% endblock %}
+</body>
+</html>

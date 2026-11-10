@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Django
+.env
+db.sqlite3
+data/
+staticfiles/
+media/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 备份产物
+backup/files/
+backup/backup.log
+
+# 旧博客数据备份（本地导入用，不提交）
+backup*.sql

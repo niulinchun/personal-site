@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+# 字体/图片按二进制处理，不做任何换行转换
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

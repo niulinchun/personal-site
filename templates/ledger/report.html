@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}记账报表 · 我的小站{% endblock %}
+{% block nav_ledger %}active{% endblock %}
+
+{% block content %}
+<div class="container-lg py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">📊 记账报表 · {{ month }}</h1>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?month={{ prev_month }}">&laquo; 上一月</a>
+      <span class="fw-bold">{{ month_start|date:"Y年m月" }}</span>
+      <a class="btn btn-outline-secondary btn-sm" href="?month={{ next_month }}">下一月 &raquo;</a>
+      <a class="btn btn-outline-info btn-sm" href="{% url 'ledger:index' %}?month={{ month }}">← 返回流水</a>
+    </div>
+  </div>
+
+  <div class="row row-cols-1 row-cols-md-3 g-3 mb-3">
+    <div class="col">
+      <div class="card border-start border-4 border-success shadow-sm">
+        <div class="card-body py-2">
+          <div class="text-muted small">本月收入</div>
+          <div class="h5 mb-0 text-success">{{ income|floatformat:2 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card border-start border-4 border-danger shadow-sm">
+        <div class="card-body py-2">
+          <div class="text-muted small">本月支出</div>
+          <div class="h5 mb-0 text-danger">{{ expense|floatformat:2 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card border-start border-4 border-primary shadow-sm">
+        <div class="card-body py-2">
+          <div class="text-muted small">结余</div>
+          <div class="h5 mb-0 {% if balance >= 0 %}text-primary{% else %}text-danger{% endif %}">{{ balance|floatformat:2 }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row row-cols-1 row-cols-lg-2 g-3">
+    <div class="col">
+      <div class="card shadow-sm h-100">
+        <div class="card-header">当月分类占比</div>
+        <div class="card-body">
+          <div style="height:320px; position:relative">
+            <canvas id="pie-chart" data-pie="{{ pie_json|escapejs }}"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card shadow-sm h-100">
+        <div class="card-header">近 12 个月收支趋势（¥）</div>
+        <div class="card-body">
+          <div style="height:320px; position:relative">
+            <canvas id="trend-chart" data-trend="{{ trend_json|escapejs }}"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'vendor/chart-js/chart.umd.js' %}"></script>
+<script src="{% static 'js/ledger_report.js' %}"></script>
+{% endblock %}

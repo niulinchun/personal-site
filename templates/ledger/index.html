@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}记账 · 我的小站{% endblock %}
+{% block nav_ledger %}active{% endblock %}
+
+{% block content %}
+<div class="container-lg py-3 ledger-page">
+
+  {# ---------- 月份切换 + 操作 ---------- #}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">💰 记账</h1>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?month={{ prev_month }}">&laquo; 上一月</a>
+      <span class="fw-bold">{{ month }}</span>
+      <a class="btn btn-outline-secondary btn-sm" href="?month={{ next_month }}">下一月 &raquo;</a>
+      <a class="btn btn-outline-info btn-sm" href="{% url 'ledger:report' %}?month={{ month }}">📊 报表</a>
+      <button id="btn-add-record" type="button" class="btn btn-primary btn-sm">
+        ＋ 记一笔
+      </button>
+    </div>
+  </div>
+
+  {# ---------- 汇总卡片 ---------- #}
+  <div class="row row-cols-1 row-cols-md-3 g-3 mb-3">
+    <div class="col">
+      <div class="card border-start border-4 border-success shadow-sm h-100">
+        <div class="card-body py-2">
+          <div class="text-muted small">本月收入</div>
+          <div class="h5 mb-0 text-success">{{ income|floatformat:2|default:'0.00' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card border-start border-4 border-danger shadow-sm h-100">
+        <div class="card-body py-2">
+          <div class="text-muted small">本月支出</div>
+          <div class="h5 mb-0 text-danger">{{ expense|floatformat:2|default:'0.00' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card border-start border-4 border-primary shadow-sm h-100">
+        <div class="card-body py-2">
+          <div class="text-muted small">结余（收 - 支）</div>
+          <div class="h5 mb-0 {% if balance >= 0 %}text-primary{% else %}text-danger{% endif %}">{{ balance|floatformat:2|default:'0.00' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ---------- 流水表格 ---------- #}
+  <div class="table-responsive bg-body border rounded shadow-sm">
+    <table class="table table-hover align-middle mb-0" id="ledger-table">
+      <thead class="table-light">
+        <tr>
+          <th>日期</th><th>类型</th><th>分类</th><th>备注</th>
+          <th class="text-end">金额（¥）</th><th style="width:150px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="ledger-rows">
+        {% for r in records %}
+        <tr data-id="{{ r.pk }}" data-cat-id="{{ r.category_id }}">
+          <td class="text-nowrap">{{ r.record_date|date:"Y/m/d" }}</td>
+          <td>
+            {% if r.type == 'income' %}<span class="badge bg-success">收入</span>
+            {% else %}<span class="badge bg-danger">支出</span>{% endif %}
+          </td>
+          <td>{{ r.category.name|default:'-' }}</td>
+          <td class="text-truncate" style="max-width:260px">{{ r.note|default:'-' }}</td>
+          <td class="text-end {% if r.type == 'income' %}text-success{% else %}text-danger{% endif %} fw-semibold">
+            {{ r.amount }}
+          </td>
+          <td class="text-nowrap">
+            <button class="btn btn-sm btn-outline-primary btn-edit">编辑</button>
+            <button class="btn btn-sm btn-outline-danger btn-del">删除</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">本月还没有流水</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center py-2">
+    <span class="small text-muted" id="ledger-pageinfo">
+      第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页
+    </span>
+    <div class="btn-group btn-group-sm">
+      <button type="button" class="btn btn-outline-secondary" id="btn-prev-page" {% if not page_obj.has_previous %}disabled{% endif %}>上一页</button>
+      <button type="button" class="btn btn-outline-secondary" id="btn-next-page" {% if not page_obj.has_next %}disabled{% endif %}>下一页</button>
+    </div>
+  </div>
+
+  <p class="text-muted small">分类维护在 <a href="/admin/">后台管理</a> → 收支分类。</p>
+
+  {# ---------- 模态框 ---------- #}
+  <div class="modal fade" id="record-modal" tabindex="-1">
+    <div class="modal-dialog">
+      <form class="modal-content" id="record-form">
+        <div class="modal-header">
+          <h5 class="modal-title" id="record-modal-title">新增流水</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="record-id" value="">
+          <div class="mb-3">
+            <label class="form-label" for="record-date">日期</label>
+            <input type="date" id="record-date" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="record-category">分类</label>
+            <select id="record-category" class="form-select" required>
+              {% for c in categories %}
+              <option value="{{ c.pk }}" data-type="{{ c.type }}">{{ c.name }}（{{ c.get_type_display }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="record-amount">金额</label>
+            <input type="number" id="record-amount" class="form-control" min="0.01" step="0.01" required placeholder="0.00">
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="record-note">备注（可选）</label>
+            <input type="text" id="record-note" class="form-control" maxlength="200">
+          </div>
+          <div class="text-danger small d-none" id="record-error"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="record-save">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'js/ledger.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,107 @@
+# 个人网站生产部署（RackNerd 1GB VPS 友好）
+#
+# 用法总览见 README.md：
+#   1) cp .env.example .env && nano .env     # 配置 SECRET_KEY / DB / LLM / DOMAIN
+#   2) docker compose up -d db web
+#   3) 首次签证书（standalone，须先占用 80 端口）：
+#      docker compose --profile tls run --rm -p 80:80 certbot certonly --standalone \
+#        --agree-tos --email 你@邮箱.com -d 你的域名
+#   4) docker compose up -d nginx
+#   5) 建超管：docker compose exec web python manage.py createsuperuser
+#
+name: personal-site
+
+services:
+
+  # ---------------------------------------------------------------- MySQL 8
+  db:
+    image: mysql:8.0
+    container_name: site-db
+    restart: unless-stopped
+    # 1GB 内存 VPS 的 MySQL 精简参数
+    command:
+      - --innodb-buffer-pool-size=128M
+      - --performance-schema=OFF
+      - --max-connections=50
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 .env 里设置 DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-personal_site}
+      MYSQL_USER: ${DB_USER:-site}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请在 .env 里设置 DB_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    mem_limit: 480m
+
+  # ---------------------------------------------------------------- Django
+  web:
+    build: .
+    container_name: site-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # DJANGO_ALLOWED_HOSTS 至少包含 web 与域名（.env 里已说明）
+      DJANGO_SETTINGS_MODULE: config.settings
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput --clear &&
+             exec uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers $${UVICORN_WORKERS:-1}"
+    volumes:
+      - media_data:/app/media      # 用户上传的图片
+      - static_data:/app/staticfiles  # collectstatic 产物，nginx 直读
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 300m
+
+  # ---------------------------------------------------------------- Nginx
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: site-nginx
+    restart: unless-stopped
+    environment:
+      # 模板 /etc/nginx/templates/*.template 里的 ${DOMAIN} 会被 envsubst 替换
+      DOMAIN: ${DOMAIN:?请在 .env 里设置 DOMAIN=你的域名}
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - webroot:/var/www/certbot:ro
+      - static_data:/usr/share/nginx/static:ro
+      - media_data:/usr/share/nginx/media:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - web
+    mem_limit: 120m
+
+  # ---------------------------------------------------------------- Certbot
+  # 仅在签证书/续期时运行：
+  #   首次（standalone，需先停 nginx 或 nginx 未启动）：
+  #     docker compose --profile tls run --rm -p 80:80 certbot certonly --standalone \
+  #       --agree-tos --email me@example.com -d example.com
+  #   续期（webroot，nginx 在跑）：
+  #     docker compose --profile tls run --rm certbot renew --webroot -w /var/www/certbot
+  #     docker compose exec nginx nginx -s reload
+  certbot:
+    image: certbot/certbot
+    container_name: site-certbot
+    profiles: ["tls"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - webroot:/var/www/certbot
+
+volumes:
+  db_data:
+  media_data:
+  static_data:
+  letsencrypt:
+  webroot:

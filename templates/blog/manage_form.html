@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}{{ editing|yesno:'编辑文章,新建文章' }} · 我的小站{% endblock %}
+{% block nav_blog %}active{% endblock %}
+
+{% block content %}
+<div class="container-xl py-3">
+  <form method="post" id="post-form" novalidate>
+    {% csrf_token %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="h4 mb-0">{{ editing|yesno:'编辑文章,新建文章' }}</h1>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'blog:manage' %}"><i class="bi bi-arrow-left"></i> 返回列表</a>
+        {% if editing %}
+        <a class="btn btn-outline-info btn-sm" href="{% url 'blog:post_page' post.pk %}" target="_blank">前台查看</a>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-save"></i> 保存</button>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-12">
+        <label class="form-label" for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>
+        {{ form.title }}
+        {{ form.title.errors }}
+      </div>
+      <div class="col-sm-5 col-md-4">
+        <label class="form-label" for="{{ form.category.id_for_label }}">{{ form.category.label }}</label>
+        {{ form.category }}
+        {{ form.category.errors }}
+      </div>
+      <div class="col-sm-7 col-md-4">
+        <label class="form-label" for="{{ form.published_at.id_for_label }}">{{ form.published_at.label }}</label>
+        {{ form.published_at }}
+        {{ form.published_at.errors }}
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-6 col-xl-7">
+        <label class="form-label" for="{{ form.content_md.id_for_label }}">
+          正文（Markdown · 支持直接 Ctrl+V 粘贴图片）
+        </label>
+        {{ form.content_md }}
+        <div class="form-text">提示：粘贴截图自动上传并把 Markdown 插入光标处；右侧实时预览。</div>
+      </div>
+      <div class="col-lg-6 col-xl-5">
+        <label class="form-label">实时预览</label>
+        <div id="md-preview" class="markdown-body md-preview-box bg-light border rounded p-3"></div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'vendor/marked/marked.min.js' %}"></script>
+<script src="{% static 'js/blog_manage.js' %}"></script>
+{% endblock %}

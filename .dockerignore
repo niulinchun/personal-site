@@ -1,0 +1,20 @@
+# 不打进镜像的本地/生成文件
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+__pycache__/
+*.pyc
+.DS_Store
+
+# 本地生成物（容器内重新生成）
+db.sqlite3
+data/
+staticfiles/
+media/
+uploads/
+
+# 部署材料不需要进 web 镜像（nginx/volumes 自己挂）
+nginx/
+backup/

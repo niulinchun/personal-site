@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}GLM 问答 · 我的小站{% endblock %}
+{% block nav_chat %}active{% endblock %}
+
+{% block content %}
+<div class="chat-shell" id="chat-shell">
+
+  {# ---------- 左栏：会话列表 ~260px ---------- #}
+  <aside class="chat-col chat-left">
+    <button id="new-conv" type="button" class="btn btn-outline-primary btn-sm w-100 mb-2">
+      <i class="bi bi-plus-lg"></i> 新建会话
+    </button>
+    <div id="conv-list" class="conv-list col-scroll">
+      {% for c in conversations %}
+      <div class="conv-item" data-id="{{ c.pk }}">{{ c.title }}</div>
+      {% empty %}
+      <p class="text-muted small px-1">还没有会话，点上面新建。</p>
+      {% endfor %}
+    </div>
+  </aside>
+
+  {# ---------- 右栏：消息流 + 输入 ---------- #}
+  <main class="chat-col chat-main">
+    <div class="d-flex align-items-center gap-2 px-2 pt-2">
+      <button id="chat-nav-toggle" type="button" class="btn btn-outline-secondary btn-sm chat-nav-toggle">
+        <i class="bi bi-list"></i> 会话
+      </button>
+    </div>
+    <div id="chat-messages" class="chat-messages col-scroll"></div>
+    <form id="chat-form" class="chat-input row g-2 py-2 border-top bg-light">
+      <div class="col">
+        <textarea id="chat-input" class="form-control" rows="2" placeholder="向 GLM 提问…（Enter 发送，Shift+Enter 换行）"></textarea>
+      </div>
+      <div class="col-auto d-flex align-items-end">
+        <button type="submit" id="chat-send" class="btn btn-primary">发送</button>
+      </div>
+    </form>
+  </main>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{% static 'vendor/marked/marked.min.js' %}"></script>
+<script src="{% static 'js/chat.js' %}"></script>
+{% endblock %}

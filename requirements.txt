@@ -1,0 +1,8 @@
+Django>=4.2,<5
+uvicorn>=0.23
+httpx>=0.24,<1
+PyMySQL>=1.1,<2
+markdown>=3.5,<4
+python-dotenv>=1.0,<2
+# ImageField 校验依赖
+Pillow>=10.3,<12
