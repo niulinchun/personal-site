@@ -72,6 +72,34 @@ python manage.py runserver
 python manage.py test
 ```
 
+### 本地首次推送到 GitHub（已做前半，剩余命令对照执行）
+
+仓库已在本地初始化并以 `niulinchun` 身份首次提交（74 文件）：
+
+```powershell
+cd D:\workspace\python_projects\personal-site
+git init -b main
+git config user.name "niulinchun"
+git config user.email "niulinchun@users.noreply.github.com"
+git add -A
+git commit -m "init: personal site (blog/chat/ledger + Docker deploy)"
+```
+
+`.gitattributes` 已强制 LF（防 `.sh`/Dockerfile 在 Linux 变 CRLF 跑不起来）；
+`.gitignore` 已排除 `.env`、`.venv/`、`data/`、`media/`、`backup*.sql` 等本地产物。
+
+剩余你要做的（先在 <https://github.com/new> 建 **私有空仓库** `personal-site`，不要勾选 README 初始化）：
+
+```powershell
+git remote add origin git@github.com:niulinchun/personal-site.git
+git push -u origin main
+```
+
+> push 走 SSH 需要本机有 GitHub 密钥：`ssh-keygen -t ed25519 -N "" -f $HOME\.ssh\id_ed25519`，
+> 然后把 `C:\Users\<你>\.ssh\id_ed25519.pub` 内容贴到 GitHub → Settings → SSH and GPG keys → New SSH key。
+> 若本机连 github.com 不稳，可临时改推 HTTPS 并用 Personal Access Token 当密码；
+> 或按第三节用 Gitee 做跳板备选。
+
 ---
 
 ## 二、导入旧 Java 博客数据
@@ -173,12 +201,33 @@ sudo systemctl enable --now docker
 docker compose version   # 确认 compose v2 可用
 ```
 
-### 2) 取代码 + 配环境
+### 2) 配 Git + 取代码
+
+RackNerd 镜像一般自带 git，没有就装：
 
 ```bash
-cd /opt && git clone <你的仓库> personal-site && cd personal-site
-# 没有 git 就 scp/scp -r 传目录
+git --version || sudo apt update && sudo apt install -y git
+git config --global user.name "niulinchun"
+git config --global user.email "niulinchun@users.noreply.github.com"
+git config --global init.defaultBranch main
+```
 
+私有仓库拉取推荐给 VPS 配一条 **只读 Deploy Key**（不暴露你自己账号的私钥）：
+
+```bash
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub
+# 把输出整行复制 → GitHub 仓库页 → Settings → Deploy keys → Add deploy key
+# 名字随意（如 vps-a），不要勾选 Allow write access
+
+# 首次连接 GitHub 会问指纹，回答 yes（测试一个拉取类交互最稳的是 Clone）
+git clone git@github.com:niulinchun/personal-site.git /opt/personal-site
+cd /opt/personal-site
+```
+
+没有 git 就 scp 传目录备用：`scp -r D:\workspace\python_projects\personal-site\* user@VPS_IP:/opt/personal-site/`
+
+```bash
 cp .env.example .env
 nano .env
 ```
