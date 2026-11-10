@@ -100,6 +100,55 @@ git push -u origin main
 > 若本机连 github.com 不稳，可临时改推 HTTPS 并用 Personal Access Token 当密码；
 > 或按第三节用 Gitee 做跳板备选。
 
+日常提交（`-u` 只需首次推 main 时带一次）：
+
+```powershell
+git add -A
+git commit -m "改动说明"
+git push
+```
+
+### 排错：push 失败的四道关卡（本次实测全踩过一遍）
+
+| # | 报错/现象 | 原因 | 解法 |
+| --- | --- | --- | --- |
+| 1 | `banner exchange: ... Connection refused` | 直连 `github.com:22` 被网络拦截（家宽/校园网常见） | 在 `%USERPROFILE%\.ssh\config` 加一段，把 GitHub SSH 改走 443：`Host github.com` / `HostName ssh.github.com` / `Port 443` / `User git`；首次连接报 `Host key verification failed` 就带 `-o StrictHostKeyChecking=accept-new` 预接受一次 |
+| 2 | `Permission denied (publickey)` | 本机公钥没加到 GitHub 账号 | 用 `Get-Content $HOME\.ssh\id_ed25519.pub` 打出公钥全文，贴到 GitHub → Settings → SSH and GPG keys → New SSH key |
+| 3 | `ERROR: Repository not found.` | 远端仓库没建，或用户名/仓库名写错 | <https://github.com/new> 建仓（名称与 remote URL 一字不差）；名字不一致就 `git remote set-url origin git@github.com:实际用户/实际仓.git` |
+| 4 | `! [rejected] (fetch first)` + `Updates were rejected` | 建仓时勾了 Add a README/.gitignore/license 初始化，远端已有提交挡住了首次 push | 按"安全的 force 覆盖流程"处理（见下） |
+
+验证身份与通道：
+
+```powershell
+ssh -T git@github.com    # 通的标志：Hi <用户名>! You've successfully authenticated...
+```
+
+### force push：怎么用才是安全的
+
+`--force` 会**直接把远端分支指针改成与本地一致，丢弃远端多余的历史**。所以它只适合"远端只有建仓生成的空模板"这类场景（本次就是勾了 README 初始化产生的 `Initial commit`），**绝不能**对有真实工作的远端使用。
+
+安全的 force 覆盖流程（先看后删，再覆盖）：
+
+```powershell
+git fetch origin                            # ① 先拉取远端引用（不动本地分支）
+git log --oneline origin/main -5            # ② 看远端多了哪些提交
+git ls-tree --name-only -r origin/main      # ③ 看远端有哪些文件
+git diff --stat main...origin/main          # ④ 对比本地/远端差异
+# 若 ②③④ 确认远端仅是初始化模板、无你的工作 → 才允许覆盖：
+git push -u origin main --force
+```
+
+命令拆解：
+
+```powershell
+git push -u origin main --force
+#       │  │       └-- 不做"远端是本地祖先"检查，直接改写远端分支指针
+#       │  └-- 推 main 分支
+#       └- 首次推送时同时设置上游（之后裸 git push 即可）
+```
+
+> 习惯建议：平时宁可写 `--force-with-lease` 而不是 `--force`——它只在"远端仍停在你本地已知的那个位置"时才覆盖；如果有人/另一台机器刚推过新提交，它会拒绝而不是悄悄抹掉。单人开发时二者等效，前者是更稳的习惯。
+
 ---
 
 ## 二、导入旧 Java 博客数据
