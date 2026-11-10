@@ -644,6 +644,7 @@ docker compose up -d nginx
 
 | 现象 | 处理 |
 | --- | --- |
+| **服务器正常但本地网页打不开**：本机 `Test-NetConnection IP -Port 443` 成功、curl 卡在 TLS ClientHello 15 秒超时；22 端口同样不通 | 域名托管在 Cloudflare 时直接 **DNS 页开橙云（Proxied）+ SSL/TLS 模式 Full (strict)**：访问改走 Cloudflare 边缘，绕开"本地→美国 IP"被丢包的直连线路。服务器侧一切不用改；证书续期 webroot 在 CF 下照常回源 |
 | 装 Docker 脚本失败：`Unable to locate package docker-model-plugin`（focal EOL 缺新组件） | 官方源已被脚本配好，跳过该包手动装其余组件：见第三节 1) 实测块 |
 | `DisallowedHost` | `.env` 的 `DJANGO_ALLOWED_HOSTS` 少了你的域名或 `web` |
 | 403 `CSRF`（HTTPS） | `.env` 的 `DJANGO_CSRF_TRUSTED_ORIGINS` 加 `https://域名` |
