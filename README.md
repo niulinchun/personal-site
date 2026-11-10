@@ -543,6 +543,58 @@ docker compose exec -T web python manage.py shell -c \
 | CDN/访问 | **Cloudflare 橙云已开（Proxied）**：堵住"本地→美国 IP 直连丢包"的问题；DNS 解析出 `104.21.x/172.67.x`，`Server: cloudflare`，`/` 302、`/blog/`、`/admin/login/`、`/static/*` 全 200（2026-11-10 17:03 实测） |
 | 待办 | `.env` 填 `LLM_API_KEY` 后重启 web（`docker compose up -d web`）激活 `/chat/`；装第五节 crontab；swap（第四节） |
 
+#### 7.8 橙云开完后的端到端验证（2026-11-10 17:03 实测全绿）
+
+DNS 应解析出 Cloudflare 边缘地址（**不再是源站 IP** `107.173.149.10`）：
+
+```powershell
+# 本机（Windows）
+ipconfig /flushdns                 # 先清缓存：橙云前很可能缓存过直连死 IP
+(Resolve-DnsName tiandachui.xyz).IPAddress   # 期望：104.21.x / 172.67.x / 2606:4700:…（CF 边缘）
+```
+
+HTTPS 响应头应出现 `Server: cloudflare`：
+
+```powershell
+curl.exe -sI --connect-timeout 15 --max-time 30 https://tiandachui.xyz/blog/
+# 期望：HTTP/1.1 200 OK  +  Server: cloudflare
+```
+
+全域抽查（本次实测全部通过）：
+
+```powershell
+curl -sI https://tiandachui.xyz/                    # 302 Found（根路径跳 /blog/；明文 http:// 先被 CF 301 到 https）
+curl -sI https://tiandachui.xyz/blog/               # 200
+curl -sI https://tiandachui.xyz/admin/login/        # 200（登录墙）
+curl -sI https://tiandachui.xyz/static/css/site.css # 200
+```
+
+#### 7.9 "开了橙云还是打不开"——本地侧排查三板斧（实测踩全）
+
+服务器端确认正常（VPS 内自测 + Let's Encrypt 能签）后，本机按序排查以下三点：
+
+1. **本机 DNS 缓存残留旧直连 IP**：橙云前浏览器/系统缓存过 `107.173.149.10`（那条直连线路是黑洞）。
+   ```powershell
+   ipconfig /flushdns        # 每次改动 Cloudflare DNS 记录后都该跑一次
+   ```
+2. **hosts 文件钉过旧 IP**（flush 清不掉 hosts）：检查一遍有没有把网站域钉死。
+   ```powershell
+   Select-String "$env:SystemRoot\System32\drivers\etc\hosts" -Pattern "tiandachui|107.173|104.21"
+   # 本次实测存在：104.21.40.187 ssh.tiandachui.xyz
+   # —— 这是早年给 SSH 隧道钉的缓存，只影响 ssh 主机名，与网站主域无关，不影响访问；可留。
+   # 若钉的是 "tiandachui.xyz 本身"，必须删掉那一行再 ipconfig /flushdns。
+   ```
+3. **IPv6 优先卡住**：实测本机 IPv6 到 CF 边缘不通
+   （`Test-NetConnection 2606:4700:... -Port 443` → `False`），而解析里 AAAA 在前。
+  先前试 IPv6 失败再回退 IPv4，期间表现为"转圈"，重试/刷新后走 IPv4 即通。
+   顽固时可临时禁用网卡的 IPv6 协议栈。
+4. **慢 ≠ 坏**：免费版 CF 对国内单次 6~7 秒常见（跨境 + 边缘调度），同线路时快时慢属常态，
+   不是站点故障。
+5. **浏览器自己的缓存**：无痕窗口 / Ctrl+F5；早期"无法访问"页面可能被记住，刷新即愈。
+
+排查后结论：`ipconfig /flushdns` + 等边缘记录刷新即可正常访问（/ 302、/blog/ 200、
+/admin/ 200、静态 200）。
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）
