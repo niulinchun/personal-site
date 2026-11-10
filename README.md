@@ -540,7 +540,8 @@ docker compose exec -T web python manage.py shell -c \
 | 证书 | `live/tiandachui.xyz/`，有效期至 2027-02-08，周一 03:30 cron webroot 续期 |
 | 管理员 | `admin`（`DJANGO_SUPERUSER_PASSWORD` 在 `.env`，登录后建议 admin 后台改一次密码） |
 | HTTPS | `HTTP/2`，nginx 1.27 反代 web:8000 |
-| 待办 | `.env` 填 `LLM_API_KEY` 后重启 web（`docker compose up -d web`）激活 `/chat/` |
+| CDN/访问 | **Cloudflare 橙云已开（Proxied）**：堵住"本地→美国 IP 直连丢包"的问题；DNS 解析出 `104.21.x/172.67.x`，`Server: cloudflare`，`/` 302、`/blog/`、`/admin/login/`、`/static/*` 全 200（2026-11-10 17:03 实测） |
+| 待办 | `.env` 填 `LLM_API_KEY` 后重启 web（`docker compose up -d web`）激活 `/chat/`；装第五节 crontab；swap（第四节） |
 
 ---
 
