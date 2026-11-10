@@ -403,6 +403,145 @@ docker compose exec web python manage.py createsuperuser
 
 > 换 IP / 重签：证书续期方法见第五节；如 80 已被占用可 `docker compose stop nginx` 后再用 standalone。
 
+### 7) 实录：tiandachui.xyz 一次配置全记录（2026-11-10 实测）
+
+以上 0)~6) 是通用教程；下面是本次在 RackNerd（Ubuntu 20.04）真实执行的完整顺序，
+每步附说明与踩坑注，照抄即可复现。
+
+#### 7.1 仓库归位到 /opt/personal-site
+
+README 后续所有命令（备份 cron / 证书续期 / 更新上线）都以 `/opt/personal-site` 为基准目录。
+如果 clone 到了家目录（尤其 clone 出来还套了一层子目录 `~/blog/personal-site`，
+git clone 默认用仓库名建目录），先归位：
+
+```bash
+# 确认位置后整体移动（.git 目录随目录走，历史/远端配置不丢）
+mv ~/blog/personal-site /opt/personal-site
+rmdir ~/blog                     # 清掉空壳
+cd /opt/personal-site
+
+git pull --ff-only               # 顺手把 clone 之后又合入的文档提交拉到最新
+git log --oneline -3             # 核对 HEAD 是否为 origin/main 同版
+```
+
+#### 7.2 DNS 预检（签证书前必做）
+
+Let's Encrypt 要从公网回连你域名，先确认解析已生效再动手：
+
+```bash
+getent hosts tiandachui.xyz      # 输出 107.173.149.10 即已生效；NO-OUTPUT 就是 DNS 还没生效
+ss -tlnp | grep ":80 "           # 无输出 = 80 空闲（standalone 签证书的硬要求）
+```
+
+#### 7.3 写 .env（随机密钥 + 本站域名）
+
+`nano .env` 逐项手改也行；下面的 sed 一步到位。
+⚠️ 大坑：`cp .env.example .env` 里 `DB_HOST / DB_NAME / DB_USER / DB_PASSWORD /
+DJANGO_ALLOWED_HOSTS / DJANGO_CSRF_TRUSTED_ORIGINS` 都是 **`#` 注释状态**——
+只替换"未注释行"会替换不到它们（sed 按 `^KEY=` 匹配，`#` 开头匹配不上，
+DB 配置就悄悄没生效）。要把注释行**改写为启用状态**，不是只追加：
+
+```bash
+cp .env.example .env
+chmod 600 .env                                          # .env 含密码，只 root 可读
+
+# 随机三件套：SECRET_KEY / DB 密码 / 管理员密码
+SK=$(python3 -c 'import secrets;print(secrets.token_urlsafe(38))')
+DBPW=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')
+SUPPW=$(python3 -c 'import secrets;print(secrets.token_urlsafe(12))')
+
+sed -i -e "s/^DJANGO_SECRET_KEY=.*/DJANGO_SECRET_KEY=$SK/" \
+       -e "s/^DJANGO_DEBUG=.*/DJANGO_DEBUG=false/" \
+       -e "s/^DOMAIN=.*/DOMAIN=tiandachui.xyz/" \
+       -e "s/^DB_ENGINE=.*/DB_ENGINE=mysql/" \
+       -e "s/^#DB_PORT=.*/DB_PORT=3306/" \
+       -e "s/^#DB_HOST=.*/DB_HOST=db/" \
+       -e "s/^#DB_NAME=.*/DB_NAME=personal_site/" \
+       -e "s/^#DB_USER=.*/DB_USER=site/" \
+       -e "s/^#DB_PASSWORD=.*/DB_PASSWORD=$DBPW/" \
+       .env
+
+# ALLOWED_HOSTS / CSRF 在模板里多半整行都被注释——确认存在则改写，不存在则插入
+grep -q "^DJANGO_ALLOWED_HOSTS=" .env || \
+  sed -i "/^DJANGO_DEBUG=false/a DJANGO_ALLOWED_HOSTS=tiandachui.xyz,web,localhost" .env
+grep -q "^DJANGO_CSRF_TRUSTED_ORIGINS=" .env || \
+  sed -i "/^DJANGO_ALLOWED_HOSTS=/a DJANGO_CSRF_TRUSTED_ORIGINS=https://tiandachui.xyz" .env
+
+# 附：管理员三件套（createsuperuser --noinput 自动读取，见 7.6）
+cat >> .env <<EOF
+DJANGO_SUPERUSER_USERNAME=admin
+DJANGO_SUPERUSER_EMAIL=18041033@qq.com
+DJANGO_SUPERUSER_PASSWORD=$SUPPW
+EOF
+```
+
+生效检查（密码行打码后应看到下面的 16 行）：
+
+```bash
+grep -vE "^\s*#" .env | grep -vE "^\s*$" | \
+  sed -E "s/^(DJANGO_SECRET_KEY|DB_PASSWORD|DJANGO_SUPERUSER_PASSWORD)=.*/\1=<hidden>/"
+# 期望：DJANGO_SECRET_KEY / DOMAIN / DJANGO_DEBUG=false / DJANGO_ALLOWED_HOSTS /
+#       DJANGO_CSRF_TRUSTED_ORIGINS / DB_ENGINE=mysql / DB_HOST=db / DB_NAME /
+#       DB_USER / DB_PASSWORD / LLM_BASE_URL / LLM_MODEL / LLM_API_KEY(空,后填) /
+#       UVICORN_WORKERS / DJANGO_SUPERUSER_*
+```
+
+`LLM_API_KEY=` 暂留空：博客、记账、HTTPS 全部正常可用；AI 问答 `/chat/` 待填 key 后生效。
+
+#### 7.4 首次构建并启动 db + web
+
+```bash
+docker compose up -d --build db web    # 首次会拉 python:3.12-slim + mysql:8.0 镜像并 pip 安装，等几分钟
+docker compose ps                      # db 应显示 (healthy)；web 起来即 OK
+docker compose logs --no-color web | tail -20
+```
+
+关键判据（logs 里看）：
+
+- `Apply all migrations ... OK`（migrate 完成）
+- `138 static files copied to '/app/staticfiles'`（collectstatic 完成）
+- `Uvicorn running on http://0.0.0.0:8000`（应用已起）
+  > compose 的 db 服务带 healthcheck，`db` 的 STATUS 变 `(healthy)` 后 web 才被正式拉起。
+
+#### 7.5 首次签发证书（standalone，趁 80 空闲）
+
+```bash
+docker compose --profile tls run --rm -p 80:80 certbot certonly --standalone \
+  --agree-tos --email 18041033@qq.com -d tiandachui.xyz
+# 成功标志：
+#   Certificate successfully received.
+#   Certificate is saved at: /etc/letsencrypt/live/tiandachui.xyz/fullchain.pem
+#   Key is saved at:         /etc/letsencrypt/live/tiandachui.xyz/privkey.pem
+#   Expires on 2027-02-08（90 天，之后 cron 周一自动续期，见第五节）
+```
+
+#### 7.6 启动 nginx + 端到端验证 + 建管理员
+
+```bash
+docker compose up -d nginx
+
+curl -sI https://tiandachui.xyz        # HTTP/2 302 → 根路径跳 /blog/，即整条 TLS→nginx→web 已通
+curl -s https://tiandachui.xyz/blog/ | head -c 300   # 输出博客 HTML 说明页面真实渲染
+
+# 管理员：.env 已预置 DJANGO_SUPERUSER_*，--noinput 全自动（账号 admin/邮箱/强随机密码在 .env 里）
+chmod 600 .env   # 确认过
+docker compose exec -T web python manage.py createsuperuser --noinput
+docker compose exec -T web python manage.py shell -c \
+  "from django.contrib.auth.models import User; print([(u.username,u.is_superuser) for u in User.objects.all()])"
+# [会看到 [('admin', True)]]
+```
+
+#### 7.7 本次完成时的系统状态（对照检查）
+
+| 组件 | 状态 |
+| --- | --- |
+| `docker compose ps` | site-db Up (healthy) / site-web Up / site-nginx Up |
+| Docker | 28.1.1 + Compose v2.35.1 + buildx v0.23.0（focal 手动安装，见三-1） |
+| 证书 | `live/tiandachui.xyz/`，有效期至 2027-02-08，周一 03:30 cron webroot 续期 |
+| 管理员 | `admin`（`DJANGO_SUPERUSER_PASSWORD` 在 `.env`，登录后建议 admin 后台改一次密码） |
+| HTTPS | `HTTP/2`，nginx 1.27 反代 web:8000 |
+| 待办 | `.env` 填 `LLM_API_KEY` 后重启 web（`docker compose up -d web`）激活 `/chat/` |
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）
