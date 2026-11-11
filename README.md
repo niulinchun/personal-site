@@ -813,6 +813,10 @@ xray/conf/config.json + `docker compose restart xray`）。
 `172.67.139.143`（SNI/Host 仍为 tiandachuis.top，伪装不变），追加备用
 `162.159.24.238`。优选结果随线路/时段漂移，明显变卡时重跑一轮即可。
 
+**本地一键优选脚本**：`D:\cfst\cf-select.bat`（双击运行，主逻辑
+`cf-select.ps1`）——自动采样测速、生成 vless 链接、最优链接自动进剪贴板、
+结果存 `latest-result.txt`。复测间隔建议：卡了再跑 / 一两周一次。
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）
