@@ -402,6 +402,17 @@ docker compose exec web python manage.py createsuperuser
 ```
 
 > 换 IP / 重签：证书续期方法见第五节；如 80 已被占用可 `docker compose stop nginx` 后再用 standalone。
+>
+> **前端修复记录（2026-11-11）**：修两个前台 bug——
+> ① 列表重复：`loadPosts` 没有时序保护，搜索防抖/切换分类的并发请求里"慢的旧结果晚回"
+>    会把旧查询结果也 append 进列表（表现为标题重复出现多次）。修复：请求加
+>    时序令牌 `listReqSeq/detailReqSeq`，过期响应直接丢弃（详情同样保护）。
+> ② 点赞"变红色矩形"：点赞成功后按钮被切成 `btn-danger` 全红底块，观感差。修复：
+>    改为 `setLikeState()`——按钮保持 `btn-outline-danger` 描边，只把心形图标
+>    `bi-heart → bi-heart-fill + text-danger`（实心红心）并禁用按钮。
+> ③ 由于 CF/浏览器会缓存 `/static/js/blog.js`，模板引用改为
+>    `blog.js?v=20261111`——**以后每次改 JS/CSS，记得同步升版本号**（或改文件名），
+>    否则线上会一直给旧缓存。
 
 ### 7) 实录：tiandachui.xyz 一次配置全记录（2026-11-10 实测）
 
