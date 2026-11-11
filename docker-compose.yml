@@ -72,6 +72,8 @@ services:
       DOMAIN: ${DOMAIN:?请在 .env 里设置 DOMAIN=你的域名}
       # 多域名共存：旧域名也挂到同一 server（一张证书含两域 SAN）；不需要就留空
       DOMAIN_OLD: ${DOMAIN_OLD:-}
+      # Xray VLESS-WS 入口路径（.env 里 XRAY_WS_PATH=/ws-xxxx），nginx 据此转发到 xray 容器
+      XRAY_WS_PATH: ${XRAY_WS_PATH:?请在 .env 里设置 XRAY_WS_PATH=/ws-xxxx}
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - letsencrypt:/etc/letsencrypt:ro
@@ -83,7 +85,23 @@ services:
       - "443:443"
     depends_on:
       - web
+      - xray
     mem_limit: 120m
+
+  # ---------------------------------------------------------------- Xray 代理
+  # 个人科学上网核心（v2ray 现代内核）。双入口：
+  #   1) VLESS+Reality：宿主 8443 直连（不经 Cloudflare）
+  #   2) VLESS+WS：容器内 10086，仅由 nginx 内网转发（流量走 Cloudflare 橙云）
+  # 密钥/配置在 VPS 的 xray/config.json（已 gitignore，不入仓库）
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: site-xray
+    restart: unless-stopped
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    ports:
+      - "8443:8443"
+    mem_limit: 200m
 
   # ---------------------------------------------------------------- Certbot
   # 仅在签证书/续期时运行：

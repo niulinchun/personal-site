@@ -82,6 +82,24 @@ server {
         proxy_set_header Connection "";
     }
 
+    # ---------------- VLESS-WS 代理入口（经 Cloudflare 中转） ----------------
+    # 只有带 WebSocket 升级头的请求才转发给 xray，其余一律 404（防路径扫描）
+    location ${XRAY_WS_PATH} {
+        if ($http_upgrade !~* ^websocket$) { return 404; }
+        # 用 Docker 内嵌 DNS 动态解析 xray（xray 容器重建换 IP 也不用动 nginx）
+        resolver 127.0.0.11 valid=10s;
+        set $xray_backend "xray:10086";
+        proxy_pass http://$xray_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Upgrade  $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host     $host;
+
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
     # ---------------- 其余全部反代 Django（admin / blog / ledger …） ----------------
     location / {
         proxy_pass http://web:8000;
