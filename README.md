@@ -732,6 +732,69 @@ STREAM RESULT: [('content', 'ok')]
 
 `/chat/` 页面渲染检查：模型/深度下拉均存在，`chat.js?v=20261111` 生效。
 
+#### 7.12 Xray 个人代理：VLESS 双入口（CF 中转主用 + Reality 备用）（2026-11-11）
+
+需求：在 VPS 上搭个人代理访问 Google/YouTube（自用）。实测前置条件：
+
+- 本地直连 VPS IP（107.173.149.10）**整 IP 不可达**：443 TLS 握手三次全部
+  15s 超时、22 早就是黑洞、装好 xray 后 8443 TCP 也不通 → 只有走
+  Cloudflare 的链路可达（网站/SSH 均如此）。**所以主用方案必须是 CF 中转**。
+
+**架构**（xray 以 Docker 服务加入现有 compose，`a98e4cb`/`d0fb811`）：
+
+```
+客户端 v2rayN
+  ├─ 主用：VLESS+WS+TLS → tiandachuis.top:443 (CF 橙云) → nginx → xray:10086
+  └─ 备用：VLESS+Reality → 107.173.149.10:8443 直连（换网络环境才可能可用）
+```
+
+**改动清单**：
+
+1. `docker-compose.yml`：新增 `xray` 服务（镜像 `ghcr.io/xtls/xray-core`，
+   发布 8443 对外；10086 仅容器内网）；nginx `environment` 增加
+   `XRAY_WS_PATH`（必填，来自 .env）；nginx `depends_on` 增加 xray。
+2. `nginx/nginx.conf.template`：443 server 增加
+   `location ${XRAY_WS_PATH}`——非 WebSocket 升级头一律 404（防路径扫描）；
+   `resolver 127.0.0.11` + 变量 `proxy_pass`（xray 重建换 IP 不用动 nginx）；
+   `proxy_http_version 1.1` + Upgrade/Connection 头（WS 升级必需）。
+3. `xray/config.example.json`（仓库，占位符文档）；
+   真实配置 `xray/conf/config.json` 只在 VPS 生成（.gitignore 排除）。
+4. `.env`（VPS）追加 `XRAY_WS_PATH=/ws-<随机hex>`。
+
+**踩坑实录**：
+
+- 官方镜像读 **`/usr/local/etc/xray/` 配置目录**（confdir 模式，目录下所有
+  json 合并加载）且**镜像无 shell**（scratch 风格，exec sh 失败）。第一版把
+  config.json 挂到 `/etc/xray/config.json` 完全没生效 → nginx 502。
+  修复：`- ./xray/conf:/usr/local/etc/xray:ro` **整目录覆盖**；真实配置放
+  `xray/conf/` 子目录（example 文件不在挂载路径内，避免被当配置解析）。
+- 镜像启动日志警告：Reality dest 用 `www.microsoft.com` 与非 443 端口会增加
+  IP 被墙概率；WS 传输层标记弃用（官方推 XHTTP）。当前保留 WS——v2rayN/
+  v2rayNG/Shadowrocket 全系兼容最广，且走 CF 的 WS 是成熟组合。
+
+**密钥生成**（VPS，真实值已写入 xray/conf/config.json）：
+
+```
+UUID=$(docker run --rm ghcr.io/xtls/xray-core uuid)
+docker run --rm ghcr.io/xtls/xray-core x25519     # Private/Public
+SID=$(openssl rand -hex 8)                        # Reality shortId
+XRAY_WS_PATH=/ws-$(openssl rand -hex 6)           # WS 隐匿路径
+```
+
+**端到端验证（全通过）**：
+
+```
+GET  https://tiandachuis.top/ws-a27e377aaf33            → 404（普通请求被拒=隐匿）
+WS   同路径 + Upgrade: websocket                        → 101 Switching Protocols
+GET  https://tiandachuis.top/ws-wrongpath               → 404
+回归  /blog/ 200、/admin/ 302、/static/ 200              → 网站无影响
+```
+
+**客户端导入**（Windows v2rayN / Android v2rayNG / iOS Shadowrocket 或 Streisand）：
+复制 `vless://` 分享链接 → 客户端"从剪贴板导入"。链接模板见本次会话记录；
+UUID/密钥泄露=完全代理权，若外泄需重新生成（uuid/x25519 + 改
+xray/conf/config.json + `docker compose restart xray`）。
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）
