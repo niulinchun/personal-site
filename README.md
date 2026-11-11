@@ -606,6 +606,65 @@ curl -sI https://tiandachui.xyz/static/css/site.css # 200
 排查后结论：`ipconfig /flushdns` + 等边缘记录刷新即可正常访问（/ 302、/blog/ 200、
 /admin/ 200、静态 200）。
 
+#### 7.10 新域名共存实录：tiandachuis.top + tiandachui.xyz（2026-11-11）
+
+需求：新买 `tiandachuis.top`，与 `tiandachui.xyz` **共存**（两个都能访问，以后想主推哪个再切）。
+新域名已自行接入 Cloudflare 并开橙云（DNS 解析出 CF 边缘 IP）。
+
+**改动清单（本地代码，已提交 bfee051）：**
+
+1. `nginx/nginx.conf.template`：80 与 443 两个 `server_name` 都改为
+   `` `server_name ${DOMAIN} ${DOMAIN_OLD};` ``（DOMAIN_OLD 可选，留空时退化为单域名）。
+2. `docker-compose.yml`：nginx 服务 `environment` 增加
+   `DOMAIN_OLD: ${DOMAIN_OLD:-}`（模板渲染需要）。
+3. `.env`（VPS 上直接 sed）：
+   ```
+   DOMAIN=tiandachuis.top            # 主域名（决定证书 live 目录名）
+   DOMAIN_OLD=tiandachui.xyz         # 旧域名共存
+   DJANGO_ALLOWED_HOSTS=tiandachuis.top,tiandachui.xyz,web,localhost
+   DJANGO_CSRF_TRUSTED_ORIGINS=https://tiandachuis.top,https://tiandachui.xyz
+   ```
+
+**证书：一张含两个域的 SAN 证书**
+
+```
+docker compose --profile tls run --rm certbot certonly --webroot -w /var/www/certbot \
+  -d tiandachuis.top -d tiandachui.xyz --cert-name tiandachuis.top \
+  --email 18041033@qq.com --agree-tos --no-eff-email --non-interactive
+# nginx 在跑 → webroot 模式（80 端口的 /.well-known/acme-challenge/ 由 nginx 直出）
+# CF 橙云下照常工作：LE → CF 边缘 → 回源 80 → webroot 文件
+# 产物：/etc/letsencrypt/live/tiandachuis.top/（cert-name 即 live 目录名，须与 DOMAIN 一致）
+```
+
+> **踩坑**：第一次签发 certbot 把两个域 **expand 进了已有 `tiandachui.xyz` 证书**
+> （renewal conf 复用，live 目录名仍是 `tiandachui.xyz`）——而 nginx 模板写死
+> `live/${DOMAIN}/`，新 DOMAIN=`tiandachuis.top` 对不上，nginx 起不来。
+> 解决：`certbot delete --cert-name tiandachui.xyz --non-interactive` 删掉旧证书
+> （nginx 内存里已加载的不受影响），再按上面命令用 `--cert-name tiandachuis.top`
+> 重签 → live 目录与 ${DOMAIN} 一致。
+
+**生效：**
+
+```
+docker compose up -d --force-recreate nginx   # 模板重渲染（server_name 两域 + 新证书路径）
+docker compose up -d --force-recreate web     # 读新 .env（ALLOWED_HOSTS/CSRF）
+```
+
+**验证（全通过）：**
+
+```
+curl -sI https://tiandachuis.top/blog/     # HTTP/1.1 200 OK
+curl -sI https://tiandachui.xyz/blog/      # HTTP/1.1 200 OK（同一张 SAN 证书）
+# 证书实测：Subject CN=tiandachuis.top，SAN 含两域
+```
+
+**注意：**
+
+- 续期 cron（`certbot renew --webroot`）自动覆盖这张双域证书，无需改。
+- 新 zone 的 Cloudflare SSL/TLS 模式建议也设为 **Full (strict)**。
+- 以后再加第三个域：模板不用动，`.env` 的 `server_name` 改用列表思路即可
+  （或再加 `DOMAIN_OLD2`）；证书多 `-d` 一个域、`--cert-name` 保持主域。
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）
