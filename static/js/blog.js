@@ -27,6 +27,8 @@
   var commentForm = document.getElementById("comment-form");
 
   var state = { cat: "all", q: "", page: 1, hasMore: false, currentId: null };
+  var listReqSeq = 0; /* 列表请求序号（竞态保护） */
+  var detailReqSeq = 0; /* 详情请求序号（竞态保护） */
 
   /* localStorage 点赞防重复 */
   var likedSet = (function () {
@@ -109,8 +111,10 @@
       state.page = 1;
       postListEl.innerHTML = "";
     }
+    var gen = ++listReqSeq; /* 时序令牌：丢弃过期响应，防止旧查询结果晚回导致列表重复 */
     var params = new URLSearchParams({ category: state.cat, q: state.q, page: String(state.page) });
     return requestJSON("/blog/api/posts/?" + params.toString()).then(function (data) {
+      if (gen !== listReqSeq) return; /* 已有更新的请求，本次结果作废 */
       (data.items || []).forEach(function (item) { postListEl.appendChild(postItem(item)); });
       state.hasMore = !!data.has_next;
       loadMoreBtn.classList.toggle("d-none", !state.hasMore);
@@ -142,6 +146,17 @@
 
   /* -------------------------------------------------- 右栏详情 */
 
+  function setLikeState(liked) {
+    /* 点赞视觉：只把心形图标变实心变红，按钮本身保持描边（避免整钮变红块） */
+    var icon = pdLikeBtn.querySelector(".bi");
+    if (icon) {
+      icon.classList.toggle("bi-heart", !liked);
+      icon.classList.toggle("bi-heart-fill", liked);
+      icon.classList.toggle("text-danger", liked);
+    }
+    pdLikeBtn.disabled = liked;
+  }
+
   function renderDetail(data) {
     detailEmpty.classList.add("d-none");
     detailBody.classList.remove("d-none");
@@ -159,8 +174,7 @@
       pdCategory.classList.add("d-none");
     }
 
-    var liked = likedSet.has(Number(data.id));
-    pdLikeBtn.classList.toggle("btn-danger", liked);
+    setLikeState(likedSet.has(Number(data.id)));
     pdLikeBtn.disabled = false;
 
     try {
@@ -176,7 +190,9 @@
       location.href = "/blog/" + id + "/";
       return;
     }
+    var gen = ++detailReqSeq; /* 时序令牌：快速连点/快速切换文章时丢弃过期详情 */
     return requestJSON("/blog/api/posts/" + id + "/").then(function (data) {
+      if (gen !== detailReqSeq) return;
       state.currentId = id;
       renderDetail(data);
       if (push) history.pushState({ postId: id }, "", "/blog/" + id + "/");
@@ -197,7 +213,7 @@
       likedSet.add(Number(id));
       persistLiked();
       pdLikes.textContent = data.likes;
-      pdLikeBtn.classList.add("btn-danger");
+      setLikeState(true);
     }).catch(function (err) { alert(err.message); });
   });
 
