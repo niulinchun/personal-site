@@ -185,8 +185,10 @@
   }
 
   function openPost(id, push) {
-    if (mqMobile.matches) {
-      /* 移动端：整页跳转“列表 → 详情” */
+    if (mqMobile.matches && push) {
+      /* 移动端：用户主动点击才整页跳转“列表 → 详情”；
+         push=false 是 init 恢复场景（直接打开 /blog/<id>/），
+         若也跳转会无限自刷新，这里改为走 fetch 渲染。 */
       location.href = "/blog/" + id + "/";
       return;
     }

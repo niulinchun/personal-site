@@ -461,6 +461,32 @@ body {
   display: none;
 }
 
+/* 深度思考块：max 档时展示 GLM 的推理过程，默认流式展开、结束后折叠 */
+.chat-thinking {
+  font-size: 0.8rem;
+  color: #868e96;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  padding: 6px 12px;
+  margin: 4px 0;
+  max-width: 92%;
+}
+.chat-thinking summary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+}
+.chat-thinking .thinking-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 4px;
+  border-top: 1px dashed #dee2e6;
+  padding-top: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 @media (max-width: 767.98px) {
   .blog-shell {
     grid-template-columns: 1fr;

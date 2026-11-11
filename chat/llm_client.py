@@ -42,12 +42,14 @@ def _endpoints():
     return url
 
 
-def stream_chat(messages):
+def stream_chat(messages, model=None, reasoning_effort=None):
     """
     调用 OpenAI 兼容 /chat/completions（stream=True），
-    逐条 yield 内容增量（str）。
+    逐条 yield (kind, text) 元组：kind = "content"（正文）或 "reasoning"（思考链）。
 
     messages：[{"role": "user"|"assistant", "content": str}, ...]
+    model：模型名；None 时用 settings.LLM_MODEL。
+    reasoning_effort：思考深度 "low"|"high"|"max"（GLM 深度思考档位）；None 则不传。
     出错抛 LLMError；调用方负责在流式响应里把错误转给前端。
     """
     api_key = (settings.LLM_API_KEY or "").strip()
@@ -55,10 +57,12 @@ def stream_chat(messages):
         raise LLMNotConfigured("未配置 LLM_API_KEY，请在 .env 中设置后重启")
 
     payload = {
-        "model": settings.LLM_MODEL or "glm-5.3",
+        "model": model or settings.LLM_MODEL or "glm-5.3-flash",
         "messages": list(messages),
         "stream": True,
     }
+    if reasoning_effort in ("low", "high", "max"):
+        payload["reasoning_effort"] = reasoning_effort
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -92,9 +96,12 @@ def stream_chat(messages):
                     if not choices:
                         continue
                     delta = choices[0].get("delta") or {}
+                    reasoning = delta.get("reasoning_content")
+                    if reasoning:
+                        yield ("reasoning", reasoning)
                     content = delta.get("content")
                     if content:
-                        yield content
+                        yield ("content", content)
     except LLMError:
         raise
     except httpx.HTTPError as exc:

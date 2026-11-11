@@ -22,10 +22,26 @@
 
   {# ---------- 右栏：消息流 + 输入 ---------- #}
   <main class="chat-col chat-main">
-    <div class="d-flex align-items-center gap-2 px-2 pt-2">
+    <div class="d-flex align-items-center gap-2 px-2 pt-2 flex-wrap chat-toolbar">
       <button id="chat-nav-toggle" type="button" class="btn btn-outline-secondary btn-sm chat-nav-toggle">
         <i class="bi bi-list"></i> 会话
       </button>
+      <div class="input-group input-group-sm chat-ctl">
+        <span class="input-group-text" title="模型"><i class="bi bi-cpu"></i></span>
+        <select id="chat-model" class="form-select" aria-label="模型">
+          {% for m in llm_models %}
+          <option value="{{ m }}" {% if m == llm_default %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="input-group input-group-sm chat-ctl">
+        <span class="input-group-text" title="思考深度"><i class="bi bi-lightbulb"></i></span>
+        <select id="chat-thinking" class="form-select" aria-label="思考深度">
+          <option value="low">low · 快速</option>
+          <option value="high">high · 标准</option>
+          <option value="max">max · 深度</option>
+        </select>
+      </div>
     </div>
     <div id="chat-messages" class="chat-messages col-scroll"></div>
     <form id="chat-form" class="chat-input row g-2 py-2 border-top bg-light">
@@ -42,5 +58,5 @@
 
 {% block page_js %}
 <script src="{% static 'vendor/marked/marked.min.js' %}"></script>
-<script src="{% static 'js/chat.js' %}"></script>
+<script src="{% static 'js/chat.js' %}?v=20261111"></script>
 {% endblock %}

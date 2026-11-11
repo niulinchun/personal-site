@@ -165,7 +165,13 @@ BLOG_IMAGE_MAX_BYTES = int(os.getenv("BLOG_IMAGE_MAX_BYTES", str(10 * 1024 * 102
 # ---------------------------------------------------------------------------
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "glm-5.3")
+LLM_MODEL = os.getenv("LLM_MODEL", "glm-5.3-flash")
+# 前端可选模型白名单（逗号分隔）。2026-11 实测免费可用：glm-5.3-flash / glm-5.3-flashx
+LLM_MODELS = [
+    m.strip()
+    for m in os.getenv("LLM_MODELS", "glm-5.3-flash,glm-5.3-flashx").split(",")
+    if m.strip()
+]
 
 # ---------------------------------------------------------------------------
 # 其他

@@ -98,7 +98,9 @@ class ChatStreamingTests(TestCase):
 
     @patch("chat.views.stream_chat")
     def test_stream_success_saves_assistant_reply(self, mock_stream):
-        mock_stream.return_value = iter(["你好", "，", "世界"])
+        mock_stream.return_value = iter(
+            [("content", "你好"), ("content", "，"), ("content", "世界")]
+        )
         conversation = Conversation.objects.create(title="新的对话")
 
         resp = self.client.post(
@@ -130,7 +132,7 @@ class ChatStreamingTests(TestCase):
     def test_stream_llm_error_yields_error_event(self, mock_stream):
         from chat.llm_client import LLMError
 
-        def raise_error(messages):
+        def raise_error(*args, **kwargs):
             raise LLMError("上游炸了")
 
         mock_stream.side_effect = raise_error
@@ -156,7 +158,7 @@ class ChatStreamingTests(TestCase):
 
     @patch("chat.views.stream_chat")
     def test_history_sent_to_upstream(self, mock_stream):
-        mock_stream.return_value = iter(["好"])
+        mock_stream.return_value = iter([("content", "好")])
         conversation = Conversation.objects.create(title="旧会话")
         Message.objects.create(conversation=conversation, role=Message.ROLE_USER, content="第一问")
         Message.objects.create(conversation=conversation, role=Message.ROLE_ASSISTANT, content="第一答")
@@ -173,3 +175,68 @@ class ChatStreamingTests(TestCase):
         self.assertEqual(history[0], {"role": "user", "content": "第一问"})
         self.assertEqual(history[1], {"role": "assistant", "content": "第一答"})
         self.assertEqual(history[-1], {"role": "user", "content": "第二问"})
+
+
+class ChatModelThinkingTests(TestCase):
+    """模型选择 + 思考深度档位。"""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser("me", "me@example.com", "pass123456")
+        self.client.force_login(self.user)
+        self.conversation = Conversation.objects.create(title="会话")
+
+    def _post(self, body):
+        return self.client.post(
+            f"/chat/api/conversations/{self.conversation.pk}/messages/stream/",
+            data=body, content_type="application/json")
+
+    def test_index_renders_model_options(self):
+        resp = self.client.get("/chat/")
+        self.assertEqual(resp.status_code, 200)
+        for model in settings.LLM_MODELS:
+            self.assertContains(resp, model)
+
+    def test_rejects_model_outside_whitelist(self):
+        resp = self._post('{"content": "hi", "model": "glm-9.9-evil"}')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("不支持的模型", resp.json()["error"])
+
+    def test_rejects_bad_thinking_level(self):
+        resp = self._post('{"content": "hi", "thinking": "turbo"}')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("low / high / max", resp.json()["error"])
+
+    @patch("chat.views.stream_chat")
+    def test_model_and_effort_forwarded_to_upstream(self, mock_stream):
+        mock_stream.return_value = iter([("content", "好")])
+        resp = self._post(
+            '{"content": "hi", "model": "glm-5.3-flashx", "thinking": "max"}')
+        self.assertEqual(resp.status_code, 200, _sse_payload(resp))
+        kwargs = mock_stream.call_args.kwargs
+        self.assertEqual(kwargs["model"], "glm-5.3-flashx")
+        self.assertEqual(kwargs["reasoning_effort"], "max")
+
+    @patch("chat.views.stream_chat")
+    def test_defaults_when_model_and_thinking_omitted(self, mock_stream):
+        mock_stream.return_value = iter([("content", "好")])
+        resp = self._post('{"content": "hi"}')
+        self.assertEqual(resp.status_code, 200, _sse_payload(resp))
+        kwargs = mock_stream.call_args.kwargs
+        self.assertIsNone(kwargs["model"])  # 视图不传 → llm_client 用 settings.LLM_MODEL
+        self.assertIsNone(kwargs["reasoning_effort"])
+
+    @patch("chat.views.stream_chat")
+    def test_thinking_events_forwarded_but_not_saved(self, mock_stream):
+        mock_stream.return_value = iter(
+            [("reasoning", "先想一下"), ("reasoning", "…"), ("content", "答案是 4")]
+        )
+        resp = self._post('{"content": "2+2=?", "thinking": "max"}')
+        self.assertEqual(resp.status_code, 200)
+        payload = _sse_payload(resp)
+        self.assertIn('"thinking"', payload)
+        self.assertIn("先想一下", payload)
+        self.assertIn('"delta"', payload)
+        self.assertIn("答案是 4", payload)
+        # 落库只存正文（思考链不进数据库）
+        contents = [m.content for m in self.conversation.messages.order_by("id")]
+        self.assertEqual(contents, ["2+2=?", "答案是 4"])

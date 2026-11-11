@@ -10,6 +10,7 @@ SSE 流式实现：
 import json
 import logging
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, StreamingHttpResponse
@@ -55,7 +56,15 @@ def _conv_payload(conversation: Conversation):
 @login_required
 def chat_index(request):
     conversations = Conversation.objects.all()[:200]
-    return render(request, "chat/index.html", {"conversations": conversations})
+    return render(
+        request,
+        "chat/index.html",
+        {
+            "conversations": conversations,
+            "llm_models": settings.LLM_MODELS,
+            "llm_default": settings.LLM_MODEL,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -106,14 +115,26 @@ def api_message_list(request, pk):
 # ---------------------------------------------------------------------------
 
 
-def _read_user_content(request):
+# 思考深度档位（GLM 深度思考：low=快速 / high=标准 / max=深度）
+THINKING_LEVELS = ("low", "high", "max")
+
+
+def _read_payload(request):
+    """
+    解析发消息请求体：content + model + thinking（思考深度）。
+    返回 (content, model, thinking)；JSON 解析失败返回 None。
+    """
     if request.content_type and "json" in request.content_type:
         try:
             data = json.loads(request.body.decode("utf-8") or "{}")
         except (ValueError, UnicodeDecodeError):
             return None
-        return (data.get("content") or "").strip()
-    return (request.POST.get("content") or "").strip()
+    else:
+        data = request.POST
+    content = (data.get("content") or "").strip()
+    model = (data.get("model") or "").strip()
+    thinking = (data.get("thinking") or "").strip()
+    return content, model, thinking
 
 
 @login_required
@@ -122,17 +143,27 @@ def api_message_stream(request, pk):
     """
     发送一条用户消息并流式返回助手回答。
 
+    请求体（JSON）：{"content": str, "model": 可选, "thinking": 可选 low|high|max}
+
     SSE 事件格式（每条以 data: 开头、空行结尾）：
-      {"delta": "增量文本"}       # 多条
-      {"error": "错误信息"}        # 失败时
-      {"done": true}              # 结束标记
+      {"delta": "正文增量"}          # 多条
+      {"thinking": "思考链增量"}     # 深度思考时的推理过程（max 档常见）
+      {"error": "错误信息"}          # 失败时
+      {"done": true}                 # 结束标记
     """
     conversation = get_object_or_404(Conversation, pk=pk)
-    content = _read_user_content(request)
+    payload = _read_payload(request)
+    if payload is None:
+        return JsonResponse({"error": "请求体不是合法 JSON"}, status=400)
+    content, model, thinking = payload
     if not content:
         return JsonResponse({"error": "消息不能为空"}, status=400)
     if len(content) > 8000:
         return JsonResponse({"error": "单条消息最多 8000 字"}, status=400)
+    if model and model not in settings.LLM_MODELS:
+        return JsonResponse({"error": "不支持的模型：" + model}, status=400)
+    if thinking and thinking not in THINKING_LEVELS:
+        return JsonResponse({"error": "思考深度只支持 low / high / max"}, status=400)
 
     Message.objects.create(conversation=conversation, role=Message.ROLE_USER, content=content)
 
@@ -151,9 +182,16 @@ def api_message_stream(request, pk):
         chunks = []
         try:
             yield "retry: 3000\n\n"
-            for delta in stream_chat(history):
-                chunks.append(delta)
-                yield "data: " + json.dumps({"delta": delta}, ensure_ascii=False) + "\n\n"
+            for kind, text in stream_chat(
+                history,
+                model=model or None,
+                reasoning_effort=thinking or None,
+            ):
+                if kind == "content":
+                    chunks.append(text)
+                    yield "data: " + json.dumps({"delta": text}, ensure_ascii=False) + "\n\n"
+                elif kind == "reasoning":
+                    yield "data: " + json.dumps({"thinking": text}, ensure_ascii=False) + "\n\n"
         except LLMError as exc:
             logger.warning("LLM 流式失败：%s", exc)
             yield "data: " + json.dumps({"error": str(exc)}, ensure_ascii=False) + "\n\n"

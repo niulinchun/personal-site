@@ -12,8 +12,40 @@
   var chatForm = document.getElementById("chat-form");
   var chatInput = document.getElementById("chat-input");
   var sendBtn = document.getElementById("chat-send");
+  var modelSelect = document.getElementById("chat-model");
+  var thinkingSelect = document.getElementById("chat-thinking");
 
   var state = { currentId: null, streaming: false };
+
+  /* 模型 / 思考深度：localStorage 记住上次选择（仅当仍在白名单内才恢复） */
+  function restorePrefs() {
+    try {
+      var savedModel = localStorage.getItem("chat.model");
+      var savedThinking = localStorage.getItem("chat.thinking");
+      if (modelSelect && savedModel) {
+        for (var i = 0; i < modelSelect.options.length; i++) {
+          if (modelSelect.options[i].value === savedModel) {
+            modelSelect.value = savedModel;
+            break;
+          }
+        }
+      }
+      if (thinkingSelect && savedThinking) {
+        for (var j = 0; j < thinkingSelect.options.length; j++) {
+          if (thinkingSelect.options[j].value === savedThinking) {
+            thinkingSelect.value = savedThinking;
+            break;
+          }
+        }
+      }
+      if (modelSelect) modelSelect.addEventListener("change", function () {
+        localStorage.setItem("chat.model", modelSelect.value);
+      });
+      if (thinkingSelect) thinkingSelect.addEventListener("change", function () {
+        localStorage.setItem("chat.thinking", thinkingSelect.value);
+      });
+    } catch (e) { /* localStorage 不可用则忽略 */ }
+  }
 
   function getCookie(name) {
     var m = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
@@ -158,6 +190,35 @@
     messagesEl.appendChild(assistantBubble);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
+    var thinkingEl = null;   /* <details class="chat-thinking"> 思考块 */
+    var thinkingPre = null;
+    var thinkingText = "";
+
+    function appendThinking(text) {
+      if (!thinkingEl) {
+        thinkingEl = document.createElement("details");
+        thinkingEl.className = "chat-thinking";
+        thinkingEl.open = true;
+        var sum = document.createElement("summary");
+        sum.textContent = "思考中…";
+        thinkingEl.appendChild(sum);
+        thinkingPre = document.createElement("div");
+        thinkingPre.className = "thinking-text";
+        thinkingEl.appendChild(thinkingPre);
+        messagesEl.insertBefore(thinkingEl, assistantBubble);
+      }
+      thinkingText += text;
+      thinkingPre.textContent = thinkingText;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function collapseThinking() {
+      if (thinkingEl && thinkingEl.open) {
+        thinkingEl.open = false;
+        thinkingEl.querySelector("summary").textContent = "已深度思考 · 点击展开";
+      }
+    }
+
     var buffered = [];
     var firstDelta = true;
 
@@ -167,7 +228,11 @@
         "Content-Type": "application/json",
         "X-CSRFToken": getCookie("csrftoken")
       },
-      body: JSON.stringify({ content: content })
+      body: JSON.stringify({
+        content: content,
+        model: modelSelect ? modelSelect.value : "",
+        thinking: thinkingSelect ? thinkingSelect.value : ""
+      })
     }).then(function (resp) {
       if (!resp.ok) {
         return resp.json().catch(function () { return {}; }).then(function (data) {
@@ -197,17 +262,23 @@
               } catch (e) {
                 return;
               }
+              if (data.thinking) {
+                appendThinking(data.thinking);
+              }
               if (data.delta) {
                 if (firstDelta) {
                   assistantBubble.classList.remove("typing");
                   firstDelta = false;
                 }
+                collapseThinking();
                 buffered = appendStreamDelta(assistantBubble, data.delta, buffered);
               }
               if (data.error) {
+                collapseThinking();
                 assistantBubble.textContent = "出错了：" + data.error;
               }
               if (data.done) {
+                collapseThinking();
                 /* 结束：整段 Markdown 渲染 */
                 var full = buffered.join("");
                 if (window.marked && full) {
@@ -263,6 +334,7 @@
   /* -------------------------------------------------- 初始化 */
 
   function init() {
+    restorePrefs();
     /* 用 fetch 重渲染列表，保证每项都带删除按钮 */
     refreshConvList();
     var first = convListEl.querySelector(".conv-item");
