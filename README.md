@@ -665,6 +665,73 @@ curl -sI https://tiandachui.xyz/blog/      # HTTP/1.1 200 OK（同一张 SAN 证
 - 以后再加第三个域：模板不用动，`.env` 的 `server_name` 改用列表思路即可
   （或再加 `DOMAIN_OLD2`）；证书多 `-d` 一个域、`--cert-name` 保持主域。
 
+#### 7.11 GLM 问答上线：免费模型 + 思考深度选择 + 手机端死循环修复（2026-11-11）
+
+**① API key 配置**（VPS `.env`）：
+
+```
+LLM_API_KEY=6ad8****（用户自有 key）
+LLM_MODEL=glm-5.3-flash        # 默认模型换成免费档（原默认 glm-5.3 是收费模型会报 1113）
+```
+
+**② 免费模型探针结论**（写代码前用 key 实测 `/api/paas/v4/models` + 逐个 4-token 探针）：
+
+- `/models` 返回 12 个模型（glm-4.5 ~ glm-5.3 全系）；
+- **该 key 免费可用的只有 `glm-5.3-flash` 和 `glm-5.3-flashx`**，其余全部
+  `1113 余额不足或无可用资源`。
+- 结论已固化：`settings.LLM_MODELS = ["glm-5.3-flash", "glm-5.3-flashx"]`
+  （`.env` 里 `LLM_MODELS=` 可覆盖白名单），前端"模型"下拉只列白名单内模型。
+
+**③ 思考深度 low/high/max 的正确参数**（探针实锤）：
+
+- 老 API `thinking: {"type": "enabled"/"disabled"}`：`enabled` 可用，
+  `disabled` 被 flash 系列拒绝（`1210 该模型始终思考，不支持关闭思考`），
+  且直接传 `thinking: {"type": "low"}` 也被拒——**报错文案里提示的
+  "low/high/max" 实际走的字段是 `reasoning_effort`**（OpenAI 风格参数）。
+- 实测同一问题（鸡兔同笼）：`low`≈4.6s/341 tok、`high`≈7.0s/369 tok、
+  `max`≈31s/1624 tok 且返回思考链 `reasoning_content` → 三档确有区分。
+- 最终映射：深度下拉框 → 请求体 `{"thinking": "low|high|max"}` →
+  视图校验档位 → `stream_chat(..., reasoning_effort=档位)` → 上游
+  `payload["reasoning_effort"]`。
+
+**④ 代码改动**（`de34a7a`）：
+
+- `chat/llm_client.py`：`stream_chat(messages, model=None, reasoning_effort=None)`，
+  增量从 str 改为 `(kind, text)` 元组（`kind = "content" | "reasoning"`），
+  思考链不再被丢弃。
+- `chat/views.py`：请求体解析 `model/thinking`；模型必须命中
+  `LLM_MODELS` 白名单、thinking 必须是 low/high/max（400 拒绝）；
+  SSE 新增事件 `{"thinking": "增量"}`。
+- `templates/chat/index.html`：输入区上方工具条加两个下拉（模型 CPU 图标、
+  思考深度灯泡图标）；`chat.js?v=20261111`。
+- `static/js/chat.js`：选择经 `localStorage`（`chat.model`/`chat.thinking`）
+  记忆；`data.thinking` 渲染成可折叠思考块（流式展开 → 正文开始/结束时折叠
+  为"已深度思考 · 点击展开"）。
+- `static/css/site.css`（`?v=20261111`）：`.chat-thinking` 样式。
+- 测试 50 → 56：新增模型白名单拒绝、档位校验、model/effort 透传、
+  思考链转发且不落库等 6 个用例。
+
+**⑤ 手机端点文章"一直刷新"死循环修复**（同 commit）：
+
+- 根因：`blog.js` 的 `openPost()` 里移动端一律 `location.href = "/blog/<id>/"`
+  整页跳转，而 `init()` 恢复场景也调用 `openPost(selectedInitial, false)` ——
+  用户直接打开 `/blog/3/` 时，页面加载完又把自己跳到 `/blog/3/`，无限刷新，
+  文章永远渲染不出来。
+- 修复：跳转分支改为 `if (mqMobile.matches && push)`——仅用户主动点击
+  （`push=true`）才跳整页；恢复场景走 fetch 正常渲染（移动端右栏靠已有的
+  `body.blog-detail` class 显示，机制本来就是好的）。
+- 防缓存：`blog.js?v=20261111-2`。
+
+**部署验证**（容器内直调 `stream_chat`，真实上游）：
+
+```
+MODEL: glm-5.3-flash | MODELS: ['glm-5.3-flash', 'glm-5.3-flashx']
+httpx HTTP Request: POST .../chat/completions "HTTP/1.1 200 OK"
+STREAM RESULT: [('content', 'ok')]
+```
+
+`/chat/` 页面渲染检查：模型/深度下拉均存在，`chat.js?v=20261111` 生效。
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）
