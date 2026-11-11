@@ -70,6 +70,8 @@ services:
     environment:
       # 模板 /etc/nginx/templates/*.template 里的 ${DOMAIN} 会被 envsubst 替换
       DOMAIN: ${DOMAIN:?请在 .env 里设置 DOMAIN=你的域名}
+      # 多域名共存：旧域名也挂到同一 server（一张证书含两域 SAN）；不需要就留空
+      DOMAIN_OLD: ${DOMAIN_OLD:-}
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - letsencrypt:/etc/letsencrypt:ro

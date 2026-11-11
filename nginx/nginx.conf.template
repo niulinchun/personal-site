@@ -1,13 +1,14 @@
 # 站点 nginx 配置模板。
 # 由官方 nginx 镜像入口在启动时用 envsubst 处理：
 #   /etc/nginx/templates/default.conf.template → /etc/nginx/conf.d/default.conf
-# ${DOMAIN} 来自 docker-compose.yml 的 environment（= .env 里的 DOMAIN）。
+# ${DOMAIN} / ${DOMAIN_OLD} 来自 docker-compose.yml 的 environment（= .env 里同名变量）。
+# DOMAIN_OLD 可选：多域名共存时填旧域名（一张证书含两个 SAN）；留空则只有 DOMAIN。
 # nginx 自身的变量（$host/$remote_addr 等）不在容器环境里，不会被误替换。
 
 # ---------------------------------------------------------- 80：ACME 验证 + 跳转
 server {
     listen 80;
-    server_name ${DOMAIN};
+    server_name ${DOMAIN} ${DOMAIN_OLD};
 
     client_max_body_size 12m;
 
@@ -27,7 +28,7 @@ server {
 server {
     listen 443 ssl;
     http2 on;
-    server_name ${DOMAIN};
+    server_name ${DOMAIN} ${DOMAIN_OLD};
 
     # 证书由 certbot 写入共享卷 letsencrypt；容器启动时须已签发
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
