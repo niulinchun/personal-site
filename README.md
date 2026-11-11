@@ -817,6 +817,35 @@ xray/conf/config.json + `docker compose restart xray`）。
 `cf-select.ps1`）——自动采样测速、生成 vless 链接、最优链接自动进剪贴板、
 结果存 `latest-result.txt`。复测间隔建议：卡了再跑 / 一两周一次。
 
+#### 7.13 后台编辑器：Markdown 语法速查 + 预览双标签页（2026-11-12）
+
+需求：后台写博客的人不懂 Markdown，编辑页右侧加一份"常规语法全列出来"
+的速查手册，同时保留实时预览。
+
+**改动清单**：
+
+1. `templates/blog/manage_form.html`：右列改为 Bootstrap 双标签页
+   （nav-tabs，`bootstrap.bundle.min.js` base 里本就有，无需新增 JS）：
+   - **实时预览**：原有 `#md-preview` 容器不变（`blog_manage.js` 的
+     marked.js 实时渲染逻辑本来就存在，这次主要是补速查）；
+   - **语法速查**：新 `#tab-cheat` 面板，纯静态 HTML（零 JS），条目
+     结构 = `cheat-code`（写法）+ `cheat-demo`（渲染效果）成对展示，
+     覆盖：标题 1~6 级 / 段落与换行（空行分段、行尾两空格换行）/
+     强调（斜体粗体粗斜体删除线）/ 列表（无序、有序、嵌套）/ 待办清单
+     / 引用（含嵌套）/ 代码（行内 + 围栏代码块）/ 链接与图片（含
+     Ctrl+V 粘贴上传提示）/ 表格（含对齐冒号写法）/ 分割线 / 转义
+     （`\*`）与少量 HTML。
+2. `static/css/site.css`（**`?v=20261112`**，改 CSS 必升版本号防缓存）：
+   `.md-cheat-box`（与预览同高 60vh 可滚动）、`.md-cheat-h`、
+   `.cheat-code/.cheat-demo/.cheat-table` 样式；滚动条选择器并入
+   `.md-cheat-box`。
+3. `blog/tests.py`：+1 用例 `test_editor_has_preview_and_cheatsheet`
+   （登录后 GET 编辑页，断言双标签页、预览容器与六类语法条目存在），
+   测试 56 → 57。
+
+**注意**：模板条目里展示的写法文本要过 HTML 转义（`&lt;br&gt;` 这类），
+"效果"列则写真实 HTML 标签——不要混淆两者。
+
 ---
 
 ## 四、1GB 内存 VPS 加 2GB Swap（强烈建议）

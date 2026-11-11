@@ -42,11 +42,148 @@
           正文（Markdown · 支持直接 Ctrl+V 粘贴图片）
         </label>
         {{ form.content_md }}
-        <div class="form-text">提示：粘贴截图自动上传并把 Markdown 插入光标处；右侧实时预览。</div>
+        <div class="form-text">提示：粘贴截图自动上传并把 Markdown 插入光标处；右侧可在"实时预览 / 语法速查"间切换。</div>
       </div>
       <div class="col-lg-6 col-xl-5">
-        <label class="form-label">实时预览</label>
-        <div id="md-preview" class="markdown-body md-preview-box bg-light border rounded p-3"></div>
+        <ul class="nav nav-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" type="button" role="tab"
+                    data-bs-toggle="tab" data-bs-target="#tab-preview" aria-selected="true">实时预览</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" type="button" role="tab"
+                    data-bs-toggle="tab" data-bs-target="#tab-cheat" aria-selected="false">
+              <i class="bi bi-markdown"></i> 语法速查
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div id="tab-preview" class="tab-pane fade show active" role="tabpanel">
+            <div id="md-preview" class="markdown-body md-preview-box bg-light border border-top-0 rounded-bottom p-3"></div>
+          </div>
+          <div id="tab-cheat" class="tab-pane fade" role="tabpanel">
+            <div class="md-cheat-box bg-light border border-top-0 rounded-bottom p-3">
+              <h6 class="md-cheat-h"><i class="bi bi-heading"></i> 标题</h6>
+              <div class="cheat-item">
+                <code class="cheat-code"># 一级标题
+## 二级标题
+###### 六级标题（井号后加空格，共 1~6 级）</code>
+                <div class="cheat-demo">
+                  <h1>一级标题</h1><h2>二级标题</h2><h6>六级标题</h6>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-paragraph"></i> 段落与换行</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">这是第一段（两段之间空一行）
+
+这是第二段。行尾加两个空格=强制换行␣␣
+第二行紧跟其下。</code>
+                <div class="cheat-demo">
+                  <p class="mb-1">这是第一段（两段之间空一行）</p>
+                  <p class="mb-0">这是第二段。行尾加两个空格=强制换行<br>第二行紧跟其下。</p>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-type-bold"></i> 强调</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">*斜体*  **粗体**  ***粗斜体***  ~~删除线~~</code>
+                <div class="cheat-demo"><em>斜体</em>　<strong>粗体</strong>　<strong><em>粗斜体</em></strong>　<del>删除线</del></div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-list-ul"></i> 列表</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">- 无序列表（- 或 * 或 + 都行）
+  - 缩进两格=嵌套
+1. 有序列表（数字+点）
+2. 会自动连续编号</code>
+                <div class="cheat-demo">
+                  <ul class="mb-1"><li>无序列表（- 或 * 或 + 都行）<ul><li>缩进两格=嵌套</li></ul></li></ul>
+                  <ol class="mb-0"><li>有序列表（数字+点）</li><li>会自动连续编号</li></ol>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-check2-square"></i> 待办清单</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">- [ ] 未完成的事
+- [x] 已完成的事</code>
+                <div class="cheat-demo">
+                  <div><input type="checkbox" disabled> 未完成的事</div>
+                  <div><input type="checkbox" checked disabled> 已完成的事</div>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-quote"></i> 引用</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">> 引用别人的话
+>> 两层嵌套引用</code>
+                <div class="cheat-demo">
+                  <blockquote class="mb-0">引用别人的话<blockquote>两层嵌套引用</blockquote></blockquote>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-code-slash"></i> 代码</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">行内代码用反引号包住：`print("hi")`</code>
+                <div class="cheat-demo">行内代码用反引号包住：<code>print("hi")</code></div>
+              </div>
+              <div class="cheat-item">
+                <code class="cheat-code">三个反引号开头+语言名，整段成为代码块：
+
+```python
+def hello():
+    print("hi")
+```
+
+（结尾也要三个反引号；语言名可省略）</code>
+                <div class="cheat-demo"><pre><code>def hello():
+    print("hi")</code></pre></div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-link-45deg"></i> 链接与图片</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">[链接文字](https://example.com)
+![图片说明](图片地址)</code>
+                <div class="cheat-demo">
+                  <p class="mb-1"><a href="#">链接文字</a></p>
+                  <p class="mb-0">图片：![](...) —— <strong>直接 Ctrl+V 粘贴截图即可自动上传插入</strong></p>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-table"></i> 表格</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">| 名称 | 数量 | 备注 |
+| --- | ---: | :---: |
+| 苹果 | 3 | 左对齐 |
+| 香蕉 | 12 | 第二列右对齐，第三列居中 |</code>
+                <div class="cheat-demo">
+                  <table class="cheat-table">
+                    <thead><tr><th>名称</th><th style="text-align:right">数量</th><th style="text-align:center">备注</th></tr></thead>
+                    <tbody>
+                      <tr><td>苹果</td><td style="text-align:right">3</td><td style="text-align:center">左对齐</td></tr>
+                      <tr><td>香蕉</td><td style="text-align:right">12</td><td style="text-align:center">第二列右对齐，第三列居中</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-hr"></i> 分割线</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">前后都要空行，单独一行写三个以上的减号：
+
+---</code>
+                <div class="cheat-demo"><hr class="my-1"></div>
+              </div>
+
+              <h6 class="md-cheat-h"><i class="bi bi-escape"></i> 转义与小技巧</h6>
+              <div class="cheat-item">
+                <code class="cheat-code">\* 想显示星号本身，前面加反斜杠
+个别地方也可以直接写 HTML：&lt;br&gt;、&lt;b&gt;粗体&lt;/b&gt;</code>
+                <div class="cheat-demo">* 想显示星号本身，前面加反斜杠<br>个别地方也可以直接写 HTML：<br>、<b>粗体</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </form>

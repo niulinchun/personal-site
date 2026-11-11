@@ -81,14 +81,16 @@ body {
 
 .col-scroll::-webkit-scrollbar,
 .chat-messages::-webkit-scrollbar,
-.md-preview-box::-webkit-scrollbar {
+.md-preview-box::-webkit-scrollbar,
+.md-cheat-box::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 .col-scroll::-webkit-scrollbar-thumb,
 .chat-messages::-webkit-scrollbar-thumb,
-.md-preview-box::-webkit-scrollbar-thumb {
+.md-preview-box::-webkit-scrollbar-thumb,
+.md-cheat-box::-webkit-scrollbar-thumb {
   background: #d3d8de;
   border-radius: 8px;
 }
@@ -447,6 +449,98 @@ body {
   height: 60vh;
   overflow-y: auto;
   min-height: 420px;
+}
+
+/* 编辑器右侧"语法速查"标签页 */
+.md-cheat-box {
+  height: 60vh;
+  min-height: 420px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+}
+
+.md-cheat-h {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #495057;
+  margin: 0.9rem 0 0.35rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.md-cheat-h:first-child {
+  margin-top: 0;
+}
+
+.cheat-item {
+  margin-bottom: 0.55rem;
+}
+
+.cheat-code {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f1f3f5;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.72rem;
+  margin-bottom: 0.25rem;
+}
+
+.cheat-demo {
+  padding-left: 0.5rem;
+  border-left: 3px solid #e9ecef;
+}
+
+.cheat-demo h1,
+.cheat-demo h2,
+.cheat-demo h3,
+.cheat-demo h4,
+.cheat-demo h5,
+.cheat-demo h6 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin: 0.1rem 0;
+}
+
+.cheat-demo blockquote {
+  border-left: 3px solid #ced4da;
+  padding-left: 0.5rem;
+  color: #6c757d;
+  margin: 0.1rem 0;
+}
+
+.cheat-demo pre {
+  background: #f1f3f5;
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  margin: 0.1rem 0;
+  font-size: 0.72rem;
+}
+
+.cheat-demo pre code {
+  background: none;
+  padding: 0;
+}
+
+.cheat-demo code {
+  background: #f1f3f5;
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.75rem;
+}
+
+.cheat-table {
+  border-collapse: collapse;
+  margin: 0.1rem 0;
+  font-size: 0.78rem;
+}
+
+.cheat-table th,
+.cheat-table td {
+  border: 1px solid #ced4da;
+  padding: 0.15rem 0.45rem;
 }
 
 /* ==========================================================================

@@ -160,6 +160,21 @@ class UploadAndManageTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "文章管理")
 
+    def test_editor_has_preview_and_cheatsheet(self):
+        # 编辑页右侧：实时预览 + Markdown 语法速查双标签页
+        self.client.force_login(self.admin)
+        resp = self.client.get("/blog/manage/new/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "实时预览")
+        self.assertContains(resp, "语法速查")
+        self.assertContains(resp, 'id="md-preview"')          # 预览容器
+        self.assertContains(resp, 'id="tab-cheat"')           # 速查标签
+        self.assertContains(resp, "md-cheat-box")             # 速查面板
+        # 常规语法条目抽查：标题/代码块/表格/引用/待办/链接图片
+        for marker in ("## 二级标题", "```python", "cheat-table",
+                       "两层嵌套引用", "- [ ] 未完成的事", "[链接文字]"):
+            self.assertContains(resp, marker)
+
     @_media_root_override()
     def test_post_image_ownership_lifecycle(self):
         self.client.force_login(self.admin)
