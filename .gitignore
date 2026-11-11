@@ -27,4 +27,4 @@ backup/backup.log
 backup*.sql
 
 # Xray 代理真实配置（含 UUID/私钥，只在 VPS 上生成）
-xray/config.json
+xray/conf/config.json

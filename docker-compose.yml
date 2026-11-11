@@ -98,7 +98,8 @@ services:
     container_name: site-xray
     restart: unless-stopped
     volumes:
-      - ./xray/config.json:/etc/xray/config.json:ro
+      # 整目录覆盖镜像默认配置目录（镜像无 shell，confdir 模式读此目录下所有 json）
+      - ./xray/conf:/usr/local/etc/xray:ro
     ports:
       - "8443:8443"
     mem_limit: 200m
