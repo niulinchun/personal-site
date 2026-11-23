@@ -37,7 +37,7 @@ echo "[$(date '+%F %T')] 开始备份：Domain=$DOMAIN_NAME Keep=$KEEP"
 # ---------------------------------------------------------- 1) MySQL
 echo "[$(date '+%F %T')] 导出数据库 $DB_NAME ..."
 docker compose exec -T db sh -c \
-  "exec mysqldump --default-character-set=utf8mb4 --single-transaction \
+  "exec mysqldump --default-character-set=utf8mb4 --single-transaction --no-tablespaces \
      -u'${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}'" \
   | gzip > "${BACKUP_DIR}/db-${STAMP}.sql.gz"
 echo "[$(date '+%F %T')] 数据库导出完成：$(du -h "${BACKUP_DIR}/db-${STAMP}.sql.gz" | cut -f1)"
