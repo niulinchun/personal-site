@@ -893,6 +893,19 @@ bash backup/backup.sh            # 或 KEEP=14 bash backup/backup.sh
 0 3 * * 0 cd /opt/personal-site && docker compose exec -T web python manage.py cleanup_images --grace-days 7
 ```
 
+**✅ 已装机（2026-11-23）**：三条 crontab 均已装入 root（查重后追加）。
+手动备份：`bash backup/backup.sh`（`mysqldump --single-transaction --no-tablespaces`
++ media 打包，保留 7 份）；**备份完整性核验法**：`gzip -t` + 库内
+`SELECT COUNT(*)` 与 dump 行数比对（本次 6 篇文章吻合）。重要提醒：
+**VPS 是唯一副本不放备份**，db 压缩包才几十 KB，定期 scp 拉回本地一份
+（本次已存 `D:\cfst\db-20261123-152256.sql.gz`）。
+
+**SSH 隧道变更（2026-11-23 实测）**：`ssh vps`（`ssh.tiandachui.xyz` 隧道）
+TLS 握手失败（隧道疑似已失效/被弃），**改用 `ssh vps1`**
+（`ssh.tiandachuis.top` 隧道，同名配置在 `~/.ssh/config`）。Windows SSH
+吃引号的老问题：远程复杂命令一律 base64 方案
+`echo $b64 | base64 -d | bash`。
+
 ### 恢复
 
 ```bash
