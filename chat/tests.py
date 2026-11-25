@@ -63,6 +63,14 @@ class ChatApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "测试会话")
 
+    def test_page_has_screenshot_and_crop_ui(self):
+        # 编辑页包含截图按钮、预览条与框选裁剪浮层
+        resp = self.client.get("/chat/")
+        self.assertEqual(resp.status_code, 200)
+        for marker in ("chat-shot", "chat-image-preview", "chat-crop",
+                       "chat-crop-ok", "chat-crop-all", "chat.js?v=20261125-2"):
+            self.assertIn(marker, resp.content.decode("utf-8"))
+
     def test_conversation_create_and_list(self):
         resp = self.client.post("/chat/api/conversations/create/")
         self.assertEqual(resp.status_code, 201, resp.content)

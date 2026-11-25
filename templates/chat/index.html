@@ -56,7 +56,7 @@
         <textarea id="chat-input" class="form-control" rows="2" placeholder="向 GLM 提问…（Enter 发送，Shift+Enter 换行，Ctrl+V 可粘贴截图）"></textarea>
       </div>
       <div class="col-auto d-flex align-items-end gap-1">
-        <button type="button" id="chat-shot" class="btn btn-outline-secondary" title="截图/图片：电脑=截取屏幕（浏览器会询问授权），手机=从相册选择">
+        <button type="button" id="chat-shot" class="btn btn-outline-secondary" title="截图/图片：电脑=截取屏幕（可框选区域），手机=从相册选择">
           <i class="bi bi-camera"></i><span class="d-none d-sm-inline ms-1">截图</span>
         </button>
         <input type="file" id="chat-file" accept="image/*" hidden>
@@ -65,9 +65,23 @@
     </form>
   </main>
 </div>
+
+{# ---------- 框选裁剪浮层（截图/粘贴/选图共用，裁剪后才上传） ---------- #}
+<div id="chat-crop" class="chat-crop" hidden>
+  <div class="chat-crop-stage" id="chat-crop-stage">
+    <img id="chat-crop-img" alt="待裁剪截图" draggable="false">
+    <div id="chat-crop-sel" class="chat-crop-sel" hidden></div>
+  </div>
+  <div class="chat-crop-bar">
+    <span id="chat-crop-hint" class="small text-light">按住拖出要发送的区域（拖错了重新拖即可）</span>
+    <button id="chat-crop-all" type="button" class="btn btn-outline-light btn-sm">全部</button>
+    <button id="chat-crop-ok" type="button" class="btn btn-primary btn-sm" disabled>确定裁剪</button>
+    <button id="chat-crop-cancel" type="button" class="btn btn-outline-light btn-sm">取消</button>
+  </div>
+</div>
 {% endblock %}
 
 {% block page_js %}
 <script src="{% static 'vendor/marked/marked.min.js' %}"></script>
-<script src="{% static 'js/chat.js' %}?v=20261125"></script>
+<script src="{% static 'js/chat.js' %}?v=20261125-2"></script>
 {% endblock %}

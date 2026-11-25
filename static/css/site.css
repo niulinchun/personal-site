@@ -691,3 +691,47 @@ body {
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
 }
 
+/* 框选裁剪浮层：整屏图上拖拽选择区域 */
+.chat-crop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.chat-crop-stage {
+  position: relative;
+  touch-action: none;
+  cursor: crosshair;
+  line-height: 0;
+}
+
+.chat-crop-stage img {
+  max-width: 92vw;
+  max-height: 72vh;
+  display: block;
+  border-radius: 4px;
+  user-select: none;
+}
+
+/* 选区：白色边框 + 外部暗化（大扩散阴影） */
+.chat-crop-sel {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.chat-crop-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+

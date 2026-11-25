@@ -20,6 +20,13 @@
   var thumbEl = document.getElementById("chat-image-thumb");
   var previewStatus = document.getElementById("chat-image-status");
   var imageCancelBtn = document.getElementById("chat-image-cancel");
+  var cropEl = document.getElementById("chat-crop");
+  var cropStage = document.getElementById("chat-crop-stage");
+  var cropImg = document.getElementById("chat-crop-img");
+  var cropSel = document.getElementById("chat-crop-sel");
+  var cropOkBtn = document.getElementById("chat-crop-ok");
+  var cropAllBtn = document.getElementById("chat-crop-all");
+  var cropCancelBtn = document.getElementById("chat-crop-cancel");
 
   var state = { currentId: null, streaming: false, pendingImage: null };
 
@@ -274,6 +281,8 @@
         });
       });
     }).then(function (data) {
+      /* 连续截图时，替换掉旧的待发图（避免服务器上留孤儿文件） */
+      if (state.pendingImage && state.pendingImage !== data.url) clearPendingImage(true);
       setPreview(data.url);
       previewStatus.textContent = "截图已就绪，可继续输入文字，点\u201c发送\u201d一起发出去";
     }).catch(function (err) {
@@ -307,7 +316,7 @@
           canvas.toBlob(resolve, "image/png");
         });
       }).then(function (blob) {
-        if (blob) uploadImageBlob(blob);
+        if (blob) openCrop(blob);
       });
     }).catch(function (err) {
       /* 用户在浏览器弹窗点了取消 / 授权失败：不再骚扰，仅提示 */
@@ -325,7 +334,7 @@
   if (fileInput) {
     fileInput.addEventListener("change", function () {
       var f = fileInput.files && fileInput.files[0];
-      if (f) uploadImageBlob(f);
+      if (f) openCrop(f);
     });
   }
   if (imageCancelBtn) {
@@ -340,10 +349,136 @@
       if (item.kind === "file" && item.type.indexOf("image/") === 0) {
         event.preventDefault();
         var blob = item.getAsFile();
-        if (blob) uploadImageBlob(blob);
+        if (blob) openCrop(blob);
         return;
       }
     }
+  });
+
+  /* -------------------------------------------------- 框选裁剪浮层 */
+
+  var crop = { blob: null, url: null, dragging: false, sx: 0, sy: 0, rect: null };
+
+  function openCrop(blob) {
+    if (!blob) return;
+    if (blob.type && blob.type.indexOf("image/") !== 0) {
+      alert("只能发送图片文件");
+      return;
+    }
+    if (blob.size > 10 * 1024 * 1024) {
+      alert("图片超过 10MB，不能发送");
+      return;
+    }
+    crop.blob = blob;
+    crop.rect = null;
+    crop.url = URL.createObjectURL(blob);
+    cropImg.src = crop.url;
+    cropSel.hidden = true;
+    cropOkBtn.disabled = true;
+    document.getElementById("chat-crop-hint").textContent =
+      "按住拖出要发送的区域（拖错了重新拖即可）；不想裁剪就点\u201c全部\u201d";
+    cropEl.hidden = false;
+  }
+
+  function closeCrop() {
+    cropEl.hidden = true;
+    if (crop.url) URL.revokeObjectURL(crop.url);
+    cropImg.removeAttribute("src");
+    crop.blob = null;
+    crop.url = null;
+    crop.rect = null;
+    fileInput.value = "";
+  }
+
+  /* 在缩放后的舞台坐标系里取指针位置 */
+  function stagePoint(event) {
+    var r = cropStage.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max(event.clientX - r.left, 0), r.width),
+      y: Math.min(Math.max(event.clientY - r.top, 0), r.height),
+    };
+  }
+
+  function drawSel() {
+    if (!crop.rect) { cropSel.hidden = true; return; }
+    cropSel.hidden = false;
+    cropSel.style.left = crop.rect.x + "px";
+    cropSel.style.top = crop.rect.y + "px";
+    cropSel.style.width = crop.rect.w + "px";
+    cropSel.style.height = crop.rect.h + "px";
+  }
+
+  if (cropStage) {
+    cropStage.addEventListener("pointerdown", function (event) {
+      if (cropEl.hidden) return;
+      event.preventDefault();
+      var p = stagePoint(event);
+      crop.dragging = true;
+      crop.sx = p.x;
+      crop.sy = p.y;
+      crop.rect = { x: p.x, y: p.y, w: 0, h: 0 };
+      drawSel();
+      cropOkBtn.disabled = true;
+      cropStage.setPointerCapture(event.pointerId);
+    });
+    cropStage.addEventListener("pointermove", function (event) {
+      if (!crop.dragging) return;
+      var p = stagePoint(event);
+      crop.rect = {
+        x: Math.min(crop.sx, p.x),
+        y: Math.min(crop.sy, p.y),
+        w: Math.abs(p.x - crop.sx),
+        h: Math.abs(p.y - crop.sy),
+      };
+      drawSel();
+    });
+    cropStage.addEventListener("pointerup", function () {
+      if (!crop.dragging) return;
+      crop.dragging = false;
+      /* 拖得太小视为误触，清除选区 */
+      if (!crop.rect || crop.rect.w < 12 || crop.rect.h < 12) {
+        crop.rect = null;
+        drawSel();
+        cropOkBtn.disabled = true;
+      } else {
+        cropOkBtn.disabled = false;
+      }
+    });
+  }
+
+  if (cropOkBtn) {
+    cropOkBtn.addEventListener("click", function () {
+      if (!crop.blob || !crop.rect) return;
+      var scale = cropImg.naturalWidth / cropImg.clientWidth;
+      var sx = Math.round(crop.rect.x * scale);
+      var sy = Math.round(crop.rect.y * scale);
+      var sw = Math.max(1, Math.round(crop.rect.w * scale));
+      var sh = Math.max(1, Math.round(crop.rect.h * scale));
+      var canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      canvas.getContext("2d").drawImage(cropImg, sx, sy, sw, sh, 0, 0, sw, sh);
+      var srcType = crop.blob.type || "image/jpeg";
+      var outType = srcType === "image/png" ? "image/png" : "image/jpeg";
+      canvas.toBlob(function (out) {
+        closeCrop();
+        uploadImageBlob(out || crop.blob);
+      }, outType, outType === "image/jpeg" ? 0.92 : undefined);
+    });
+  }
+  if (cropAllBtn) {
+    /* 不裁剪：整张图直接走上传 */
+    cropAllBtn.addEventListener("click", function () {
+      var blob = crop.blob;
+      closeCrop();
+      uploadImageBlob(blob);
+    });
+  }
+  if (cropCancelBtn) {
+    cropCancelBtn.addEventListener("click", closeCrop);
+  }
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !cropEl.hidden) closeCrop();
   });
 
   /* -------------------------------------------------- SSE 发送 */
