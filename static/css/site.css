@@ -560,8 +560,7 @@ body {
   font-size: 0.8rem;
   color: #868e96;
   background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 10px;
+  border: 1px solid #e9ecef;  border-radius: 10px;
   padding: 6px 12px;
   margin: 4px 0;
   max-width: 92%;
@@ -586,7 +585,6 @@ body {
     grid-template-columns: 1fr;
     height: calc(100vh - var(--nav-h));
   }
-
   .blog-left {
     display: none;
   }
@@ -641,3 +639,55 @@ body {
     max-width: 92%;
   }
 }
+
+/* ==========================================================================
+   GLM 问答：截图功能（发送按钮旁的相机按钮）
+   ========================================================================== */
+
+/* 输入框上方的截图预览条 */
+.chat-image-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  background: #fff;
+}
+
+#chat-image-preview {
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #fff;
+}
+
+/* 消息气泡里的附图缩略图 */
+.chat-msg-img {
+  display: block;
+  max-width: 240px;
+  max-height: 200px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  cursor: zoom-in;
+  margin-bottom: 4px;
+}
+
+/* 点击缩略图的全屏灯箱（点任意处关闭） */
+.chat-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.chat-lightbox img {
+  max-width: 94vw;
+  max-height: 94vh;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+

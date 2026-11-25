@@ -45,10 +45,21 @@
     </div>
     <div id="chat-messages" class="chat-messages col-scroll"></div>
     <form id="chat-form" class="chat-input row g-2 py-2 border-top bg-light">
-      <div class="col">
-        <textarea id="chat-input" class="form-control" rows="2" placeholder="向 GLM 提问…（Enter 发送，Shift+Enter 换行）"></textarea>
+      <div class="col-12" id="chat-image-preview" hidden>
+        <div class="d-flex align-items-center gap-2">
+          <img id="chat-image-thumb" class="chat-image-thumb" alt="截图预览">
+          <div class="flex-grow-1 small text-muted" id="chat-image-status">截图已就绪，可继续输入文字，点"发送"一起发出去</div>
+          <button type="button" id="chat-image-cancel" class="btn-close" aria-label="取消截图"></button>
+        </div>
       </div>
-      <div class="col-auto d-flex align-items-end">
+      <div class="col">
+        <textarea id="chat-input" class="form-control" rows="2" placeholder="向 GLM 提问…（Enter 发送，Shift+Enter 换行，Ctrl+V 可粘贴截图）"></textarea>
+      </div>
+      <div class="col-auto d-flex align-items-end gap-1">
+        <button type="button" id="chat-shot" class="btn btn-outline-secondary" title="截图/图片：电脑=截取屏幕（浏览器会询问授权），手机=从相册选择">
+          <i class="bi bi-camera"></i><span class="d-none d-sm-inline ms-1">截图</span>
+        </button>
+        <input type="file" id="chat-file" accept="image/*" hidden>
         <button type="submit" id="chat-send" class="btn btn-primary">发送</button>
       </div>
     </form>
@@ -58,5 +69,5 @@
 
 {% block page_js %}
 <script src="{% static 'vendor/marked/marked.min.js' %}"></script>
-<script src="{% static 'js/chat.js' %}?v=20261111"></script>
+<script src="{% static 'js/chat.js' %}?v=20261125"></script>
 {% endblock %}

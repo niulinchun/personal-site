@@ -819,6 +819,8 @@ xray/conf/config.json + `docker compose restart xray`）。
 
 #### 7.13 后台编辑器：Markdown 语法速查 + 预览双标签页（2026-11-12）
 
+
+
 需求：后台写博客的人不懂 Markdown，编辑页右侧加一份"常规语法全列出来"
 的速查手册，同时保留实时预览。
 
@@ -845,6 +847,54 @@ xray/conf/config.json + `docker compose restart xray`）。
 
 **注意**：模板条目里展示的写法文本要过 HTML 转义（`&lt;br&gt;` 这类），
 "效果"列则写真实 HTML 标签——不要混淆两者。
+
+#### 7.14 GLM 问答截图功能：发送按钮旁的相机按钮（2026-11-25）
+
+需求：GLM 问答页发送按钮旁加"截图"按钮，截图先预览、手动点发送；
+手机端从相册选择（浏览器安全限制：网页无法程序化截屏，iOS/微信内置完全
+不支持 getDisplayMedia）。**前置探针**：用 key 实测 `glm-5.3-flash`
+接受 OpenAI 多模态 content 数组（1px 图 200，flashx 已报 1113 余额不足）
+→ 视觉能力地基确认后才动工。
+
+**改动清单**：
+
+1. `chat/models.py`：`Message.image = ImageField(upload_to="uploads/chat/%Y/%m/")`
+   + migration `0002_message_image`。
+2. `chat/urls.py` + `chat/views.py`：
+   - `POST /chat/api/image/upload/`：multipart 上传，仅图片、≤10MB、
+     文件名重命名 `uuid.hex`（不可预测），存 `uploads/chat/YYYY/MM/`；
+   - `DELETE /chat/api/image/delete/`：取消预览时删文件，路径必须匹配
+     `CHAT_IMAGE_RE`（只认本应用生成的 `/media/uploads/chat/…`，防穿越）；
+   - `api_message_stream`：请求体可带 `image`（content/image 至少一个，
+     纯图消息允许，标题用 `[图片]` 占位）；
+   - `_build_upstream_history()`：历史组装，带图的用户消息转多模态数组
+     `[{"type":"text"},{"type":"image_url"(data:URL)}]`；**图片预算
+     HISTORY_IMAGE_LIMIT=4**，超出的老图降级为 `[图片] …` 文字占位（控制
+     token）；图片读本地文件转 base64 data URL 发上游（不走公网 URL）；
+   - 会话删除时先删掉消息附图的真实文件再级联删消息。
+3. `templates/chat/index.html`：发送按钮旁加相机按钮（`#chat-shot`）+
+   预览条（缩略图/取消/提示语）+ 隐藏 file input；`chat.js?v=20261125`。
+4. `static/js/chat.js`：
+   - 桌面：`getDisplayMedia` 截屏（浏览器授权弹窗 → 抓一帧 → 停 track）；
+     手机/不支持 → 退化 `file input` 相册选图；用户取消授权（NotAllowed）
+     静默返回，其余错误退化到选图；
+   - **canvas 前端压缩**：最长边 1568px / JPEG 0.9（截图一般 100~400KB，
+     省流量省 300m 容器内存）；
+   - Ctrl+V 直接粘贴截图（与博客编辑器同款）；
+   - 预览条可取消（调用 delete 接口删文件）；发送时随消息提交 URL，
+     预览清除但**不删文件**（已归属消息）；
+   - 气泡缩略图 + 点击全屏灯箱（点任意处关闭）。
+5. `static/css/site.css`（`?v=20261125`）：预览条/气泡图/灯箱样式。
+6. 测试 57 → 68：上传边界、路径校验、带图发消息落库、纯图消息标题、
+   多模态历史、**图片预算降级（6 发 4 带图 2 占位）**、会话删除清理文件。
+
+**踩坑**：`default_storage.save("uploads/chat/…")` 显式路径**不走**
+ImageField 的 upload_to 日期子目录 → 手动拼 `%Y/%m`，与 `CHAT_IMAGE_RE`
+严格匹配；流式响应在测试里必须先消费 `_sse_payload()`，否则 mock 未被
+调用 `call_args=None`。
+
+**隐私**：图片存 media 目录，UUID 文件名不可猜测但路径公开（与博客图
+同级）；截图内容会发到智谱服务器处理，敏感信息留意。
 
 ---
 

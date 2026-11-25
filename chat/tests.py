@@ -1,12 +1,26 @@
 """
-chat 模块测试：登录边界、会话 CRUD、SSE 流式、标题自动生成、历史落库。
+chat 模块测试：登录边界、会话 CRUD、SSE 流式、标题自动生成、历史落库、截图问答。
 """
+import base64
+import tempfile
+from pathlib import Path
+
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from unittest.mock import patch
 
 from chat.models import Conversation, Message
+
+
+def _media_root_override():
+    return override_settings(MEDIA_ROOT=Path(tempfile.mkdtemp(prefix="media-test-")))
+
+
+PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
 
 
 def _sse_payload(response):
@@ -31,6 +45,11 @@ class ChatLoginBoundaryTests(TestCase):
         self.assertEqual(
             self.client.post("/chat/api/conversations/1/messages/stream/", data="{}",
                              content_type="application/json").status_code, 302)
+        # 截图上传 / 取消删除也需要登录
+        self.assertEqual(self.client.post("/chat/api/image/upload/").status_code, 302)
+        self.assertEqual(
+            self.client.delete("/chat/api/image/delete/", data="{}",
+                               content_type="application/json").status_code, 302)
 
 
 class ChatApiTests(TestCase):
@@ -240,3 +259,147 @@ class ChatModelThinkingTests(TestCase):
         # 落库只存正文（思考链不进数据库）
         contents = [m.content for m in self.conversation.messages.order_by("id")]
         self.assertEqual(contents, ["2+2=?", "答案是 4"])
+
+
+class ChatImageTests(TestCase):
+    """截图问答：上传/取消/带图发消息/多模态历史/会话删除清理文件。"""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser("me", "me@example.com", "pass123456")
+        self.client.force_login(self.user)
+
+    def _upload(self):
+        resp = self.client.post(
+            "/chat/api/image/upload/",
+            {"file": SimpleUploadedFile("shot.png", PNG_1PX, content_type="image/png")},
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        return resp.json()["url"]
+
+    @_media_root_override()
+    def test_upload_requires_image_content_type(self):
+        f = SimpleUploadedFile("note.txt", b"hello", content_type="text/plain")
+        self.assertEqual(self.client.post("/chat/api/image/upload/", {"file": f}).status_code, 400)
+
+    @_media_root_override()
+    def test_upload_success_saves_under_chat_dir(self):
+        url = self._upload()
+        self.assertIn("/media/uploads/chat/", url)
+        name = url[len("/media/"):]
+        from django.core.files.storage import default_storage
+        self.assertTrue(default_storage.exists(name))
+
+    @_media_root_override()
+    def test_delete_image_endpoint_removes_file(self):
+        url = self._upload()
+        resp = self.client.delete("/chat/api/image/delete/", data=f'{{"url": "{url}"}}',
+                                  content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        from django.core.files.storage import default_storage
+        self.assertFalse(default_storage.exists(url[len("/media/"):]))
+
+    def test_delete_image_rejects_foreign_path(self):
+        resp = self.client.delete("/chat/api/image/delete/",
+                                  data='{"url": "/media/uploads/2026/01/evil.png"}',
+                                  content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+
+    def _send(self, conv, body):
+        with patch("chat.views.stream_chat") as mock_stream:
+            mock_stream.return_value = iter([("content", "好的")])
+            resp = self.client.post(
+                f"/chat/api/conversations/{conv.pk}/messages/stream/",
+                data=body, content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200, _sse_payload(resp))
+            return mock_stream
+
+    @_media_root_override()
+    def test_send_message_with_image_saves_and_payload_has_image(self):
+        conversation = Conversation.objects.create()
+        url = self._upload()
+        self._send(conversation, f'{{"content": "图里是什么？", "image": "{url}"}}')
+        msg = conversation.messages.filter(role=Message.ROLE_USER).latest("id")
+        self.assertTrue(msg.image)          # 附图已入库
+        self.assertEqual(msg.content, "图里是什么？")
+        # 消息列表接口返回 image 字段
+        data = self.client.get(f"/chat/api/conversations/{conversation.pk}/messages/").json()
+        self.assertEqual(data["items"][0]["image"], url)
+
+    @_media_root_override()
+    def test_pure_image_message_allowed_and_title_placeholder(self):
+        conversation = Conversation.objects.create()
+        url = self._upload()
+        self._send(conversation, f'{{"content": "", "image": "{url}"}}')
+        msg = conversation.messages.filter(role=Message.ROLE_USER).latest("id")
+        self.assertTrue(msg.image)
+        self.assertEqual(msg.content, "")
+        conversation.refresh_from_db()
+        self.assertEqual(conversation.title, "[图片]")
+
+    def test_send_rejects_empty_content_and_image(self):
+        conversation = Conversation.objects.create()
+        resp = self.client.post(
+            f"/chat/api/conversations/{conversation.pk}/messages/stream/",
+            data='{"content": ""}', content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_send_rejects_non_chat_image_path(self):
+        conversation = Conversation.objects.create()
+        resp = self.client.post(
+            f"/chat/api/conversations/{conversation.pk}/messages/stream/",
+            data='{"content": "看", "image": "/media/uploads/blog/other.png"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    @_media_root_override()
+    def test_history_carries_multimodal_image_content(self):
+        conversation = Conversation.objects.create()
+        url = self._upload()
+        mock_stream = self._send(conversation, f'{{"content": "图里是什么？", "image": "{url}"}}')
+        args, _kwargs = mock_stream.call_args
+        history = args[0]
+        last = history[-1]
+        self.assertEqual(last["role"], "user")
+        self.assertIsInstance(last["content"], list)           # 多模态数组
+        types = [part["type"] for part in last["content"]]
+        self.assertEqual(types, ["text", "image_url"])
+        self.assertTrue(last["content"][1]["image_url"]["url"].startswith("data:image/"))
+
+    @_media_root_override()
+    def test_history_image_budget_degrades_old_images(self):
+        conversation = Conversation.objects.create()
+        urls = [self._upload() for _ in range(6)]              # 上传 6 张，预算 4
+        for url in urls:
+            self._send(conversation, f'{{"content": "看图", "image": "{url}"}}')
+        args, _kwargs = None, None
+        # 第 6 次发送时：最近 4 张带图，更老的 2 张降级为 [图片] 文本占位
+        with patch("chat.views.stream_chat") as mock_stream:
+            mock_stream.return_value = iter([("content", "好")])
+            resp = self.client.post(
+                f"/chat/api/conversations/{conversation.pk}/messages/stream/",
+                data=f'{{"content": "还有几张？", "image": "{urls[5]}"}}',
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+            _sse_payload(resp)                                     # 消费流，触发上游调用
+            history = mock_stream.call_args.args[0]
+        multimodal = [h for h in history if isinstance(h["content"], list)]
+        self.assertEqual(len(multimodal), 4)                   # 预算封顶
+        degraded = [h["content"] for h in history
+                    if isinstance(h["content"], str) and h["content"] == "[图片] 看图"]
+        self.assertEqual(len(degraded), 2)                     # 老图降级为占位标记
+
+    @_media_root_override()
+    def test_conversation_delete_removes_image_files(self):
+        conversation = Conversation.objects.create()
+        url = self._upload()
+        self._send(conversation, f'{{"content": "看图", "image": "{url}"}}')
+        from django.core.files.storage import default_storage
+        name = url[len("/media/"):]
+        self.assertTrue(default_storage.exists(name))
+        resp = self.client.delete(f"/chat/api/conversations/{conversation.pk}/delete/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(default_storage.exists(name))         # 真实文件已删

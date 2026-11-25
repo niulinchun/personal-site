@@ -14,8 +14,14 @@
   var sendBtn = document.getElementById("chat-send");
   var modelSelect = document.getElementById("chat-model");
   var thinkingSelect = document.getElementById("chat-thinking");
+  var shotBtn = document.getElementById("chat-shot");
+  var fileInput = document.getElementById("chat-file");
+  var previewEl = document.getElementById("chat-image-preview");
+  var thumbEl = document.getElementById("chat-image-thumb");
+  var previewStatus = document.getElementById("chat-image-status");
+  var imageCancelBtn = document.getElementById("chat-image-cancel");
 
-  var state = { currentId: null, streaming: false };
+  var state = { currentId: null, streaming: false, pendingImage: null };
 
   /* 模型 / 思考深度：localStorage 记住上次选择（仅当仍在白名单内才恢复） */
   function restorePrefs() {
@@ -136,13 +142,37 @@
 
   /* -------------------------------------------------- 消息渲染 */
 
-  function messageBubble(role, content, useMarkdown) {
+  function openLightbox(src) {
+    var ov = document.createElement("div");
+    ov.className = "chat-lightbox";
+    var img = document.createElement("img");
+    img.src = src;
+    ov.appendChild(img);
+    ov.addEventListener("click", function () { document.body.removeChild(ov); });
+    document.body.appendChild(ov);
+  }
+
+  function messageBubble(role, content, useMarkdown, image) {
     var div = document.createElement("div");
     div.className = "chat-msg " + role;
-    if (role === "assistant" && useMarkdown && window.marked && content) {
-      div.innerHTML = window.marked.parse(content);
-    } else {
-      div.textContent = content;
+    if (image) {
+      var img = document.createElement("img");
+      img.src = image;
+      img.className = "chat-msg-img";
+      img.alt = "附图";
+      img.addEventListener("click", function () { openLightbox(image); });
+      div.appendChild(img);
+    }
+    if (content) {
+      if (role === "assistant" && useMarkdown && window.marked) {
+        var md = document.createElement("div");
+        md.innerHTML = window.marked.parse(content);
+        div.appendChild(md);
+      } else {
+        var text = document.createElement("div");
+        text.textContent = content;
+        div.appendChild(text);
+      }
     }
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -156,7 +186,7 @@
     return requestJSON("/chat/api/conversations/" + id + "/messages/").then(function (data) {
       messagesEl.innerHTML = "";
       (data.items || []).forEach(function (m) {
-        messageBubble(m.role, m.content, true);
+        messageBubble(m.role, m.content, true, m.image);
       });
       if (!(data.items || []).length) {
         var tip = document.createElement("p");
@@ -166,6 +196,155 @@
       }
     }).catch(function (err) { console.error(err); });
   }
+
+  /* -------------------------------------------------- 截图 / 图片上传 */
+
+  /* 前端 canvas 压缩：最长边 1568px、JPEG 质量 0.9。
+     截图多为文字，压缩后通常 100~400KB，省流量也省 VPS 内存。 */
+  function downscaleBlob(blob) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var MAX = 1568;
+        var w = img.width, h = img.height;
+        var scale = Math.min(1, MAX / Math.max(w, h));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        var canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        if (canvas.toBlob) {
+          canvas.toBlob(function (out) { resolve(out || blob); }, "image/jpeg", 0.9);
+        } else {
+          resolve(blob);
+        }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(blob); };
+      img.src = url;
+    });
+  }
+
+  function setPreview(url) {
+    state.pendingImage = url;
+    thumbEl.src = url;
+    previewEl.hidden = false;
+  }
+
+  function clearPendingImage(cancelUpload) {
+    var url = state.pendingImage;
+    state.pendingImage = null;
+    previewEl.hidden = true;
+    thumbEl.removeAttribute("src");
+    fileInput.value = "";
+    if (url && cancelUpload) {
+      requestJSON("/chat/api/image/delete/", { method: "DELETE", json: { url: url } })
+        .catch(function () { /* 已发送/已不存在的图片忽略 */ });
+    }
+  }
+
+  function uploadImageBlob(blob) {
+    if (!blob) return;
+    if (blob.type && blob.type.indexOf("image/") !== 0) {
+      alert("只能发送图片文件");
+      return;
+    }
+    if (blob.size > 10 * 1024 * 1024) {
+      alert("图片超过 10MB，不能发送");
+      return;
+    }
+    shotBtn.disabled = true;
+    previewEl.hidden = false;
+    thumbEl.removeAttribute("src");
+    previewStatus.textContent = "图片上传中…";
+
+    downscaleBlob(blob).then(function (small) {
+      var fd = new FormData();
+      fd.append("file", small, "screenshot.jpg");
+      return fetch("/chat/api/image/upload/", {
+        method: "POST",
+        headers: { "X-CSRFToken": getCookie("csrftoken") },
+        body: fd
+      }).then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok) throw new Error(data.error || "上传失败");
+          return data;
+        });
+      });
+    }).then(function (data) {
+      setPreview(data.url);
+      previewStatus.textContent = "截图已就绪，可继续输入文字，点\u201c发送\u201d一起发出去";
+    }).catch(function (err) {
+      previewEl.hidden = true;
+      alert(err.message || "上传失败");
+    }).finally(function () {
+      shotBtn.disabled = false;
+    });
+  }
+
+  /* 桌面：浏览器截屏（用户授权后抓一帧）；手机/不支持：退化为相册选图 */
+  function captureScreen() {
+    var gdm = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
+    if (!gdm) { fileInput.click(); return; }
+    navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then(function (stream) {
+      var video = document.createElement("video");
+      video.srcObject = stream;
+      video.muted = true;
+      return new Promise(function (resolve) {
+        video.onloadedmetadata = function () { resolve(); };
+      }).then(function () {
+        video.play();
+        return new Promise(function (resolve) { setTimeout(resolve, 300); });
+      }).then(function () {
+        var canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        return new Promise(function (resolve) {
+          canvas.toBlob(resolve, "image/png");
+        });
+      }).then(function (blob) {
+        if (blob) uploadImageBlob(blob);
+      });
+    }).catch(function (err) {
+      /* 用户在浏览器弹窗点了取消 / 授权失败：不再骚扰，仅提示 */
+      if (err && err.name === "NotAllowedError") return;
+      fileInput.click();
+    });
+  }
+
+  if (shotBtn) {
+    shotBtn.addEventListener("click", function () {
+      if (state.streaming) return;
+      captureScreen();
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener("change", function () {
+      var f = fileInput.files && fileInput.files[0];
+      if (f) uploadImageBlob(f);
+    });
+  }
+  if (imageCancelBtn) {
+    imageCancelBtn.addEventListener("click", function () { clearPendingImage(true); });
+  }
+
+  /* Ctrl+V 粘贴截图（与博客编辑器同款体验） */
+  chatInput.addEventListener("paste", function (event) {
+    var items = (event.clipboardData && event.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item.kind === "file" && item.type.indexOf("image/") === 0) {
+        event.preventDefault();
+        var blob = item.getAsFile();
+        if (blob) uploadImageBlob(blob);
+        return;
+      }
+    }
+  });
 
   /* -------------------------------------------------- SSE 发送 */
 
@@ -177,11 +356,12 @@
     return buffered;
   }
 
-  function sendStream(conversationId, content) {
+  function sendStream(conversationId, content, imageUrl) {
     state.streaming = true;
     sendBtn.disabled = true;
+    shotBtn.disabled = true;
 
-    var userBubble = messageBubble("user", content, false);
+    var userBubble = messageBubble("user", content, false, imageUrl);
     userBubble.classList.add("user");
 
     var assistantBubble = document.createElement("div");
@@ -230,6 +410,7 @@
       },
       body: JSON.stringify({
         content: content,
+        image: imageUrl || "",
         model: modelSelect ? modelSelect.value : "",
         thinking: thinkingSelect ? thinkingSelect.value : ""
       })
@@ -297,6 +478,7 @@
     }).finally(function () {
       state.streaming = false;
       sendBtn.disabled = false;
+      shotBtn.disabled = false;
       assistantBubble.classList.remove("typing");
       /* 首条消息会自动生成标题：刷新左侧列表 */
       refreshConvList();
@@ -307,7 +489,8 @@
     event.preventDefault();
     if (state.streaming) return;
     var text = chatInput.value.trim();
-    if (!text) return;
+    var imageUrl = state.pendingImage || "";
+    if (!text && !imageUrl) return;   /* 纯图消息也允许：文字可留空 */
     if (!state.currentId) {
       /* 没有当前会话时先自动新建一个 */
       requestJSON("/chat/api/conversations/create/", { method: "POST" }).then(function (data) {
@@ -315,13 +498,15 @@
           state.currentId = data.conversation.id;
           highlightConv(state.currentId);
           chatInput.value = "";
-          sendStream(state.currentId, text);
+          clearPendingImage(false);   /* 已随消息发送，文件保留 */
+          sendStream(state.currentId, text, imageUrl);
         });
       }).catch(function (err) { alert(err.message); });
       return;
     }
     chatInput.value = "";
-    sendStream(state.currentId, text);
+    clearPendingImage(false);       /* 已随消息发送，文件保留 */
+    sendStream(state.currentId, text, imageUrl);
   });
 
   chatInput.addEventListener("keydown", function (event) {

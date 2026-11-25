@@ -33,6 +33,14 @@ class Message(models.Model):
     )
     role = models.CharField("角色", max_length=16, choices=ROLE_CHOICES)
     content = models.TextField("内容")
+    # 用户消息可带截图（截图问答）；文件存 media/uploads/chat/YYYY/MM/
+    image = models.ImageField(
+        "附图",
+        upload_to="uploads/chat/%Y/%m/",
+        null=True,
+        blank=True,
+        max_length=255,
+    )
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
 
     class Meta:
