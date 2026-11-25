@@ -45,11 +45,13 @@ class ChatLoginBoundaryTests(TestCase):
         self.assertEqual(
             self.client.post("/chat/api/conversations/1/messages/stream/", data="{}",
                              content_type="application/json").status_code, 302)
-        # 截图上传 / 取消删除也需要登录
+        # 截图上传 / 取消删除 / 单条问答删除也需要登录
         self.assertEqual(self.client.post("/chat/api/image/upload/").status_code, 302)
         self.assertEqual(
             self.client.delete("/chat/api/image/delete/", data="{}",
                                content_type="application/json").status_code, 302)
+        self.assertEqual(
+            self.client.delete("/chat/api/conversations/1/messages/1/delete/").status_code, 302)
 
 
 class ChatApiTests(TestCase):
@@ -68,7 +70,7 @@ class ChatApiTests(TestCase):
         resp = self.client.get("/chat/")
         self.assertEqual(resp.status_code, 200)
         for marker in ("chat-shot", "chat-image-preview", "chat-crop",
-                       "chat-crop-ok", "chat-crop-all", "chat.js?v=20261125-2"):
+                       "chat-crop-ok", "chat-crop-all", "chat.js?v=20261125-3"):
             self.assertIn(marker, resp.content.decode("utf-8"))
 
     def test_conversation_create_and_list(self):
@@ -411,3 +413,55 @@ class ChatImageTests(TestCase):
         resp = self.client.delete(f"/chat/api/conversations/{conversation.pk}/delete/")
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(default_storage.exists(name))         # 真实文件已删
+
+
+class MessageDeleteTests(TestCase):
+    """单条问答删除：删用户消息连带助手回答，附图文件同步清理。"""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser("me", "me@example.com", "pass123456")
+        self.client.force_login(self.user)
+
+    @_media_root_override()
+    def test_delete_user_message_removes_pair_and_image_file(self):
+        conversation = Conversation.objects.create()
+        url = self.client.post(
+            "/chat/api/image/upload/",
+            {"file": SimpleUploadedFile("shot.png", PNG_1PX, content_type="image/png")},
+        ).json()["url"]
+        user_msg = Message.objects.create(
+            conversation=conversation, role=Message.ROLE_USER, content="看图", image=url[len("/media/"):]
+        )
+        reply = Message.objects.create(
+            conversation=conversation, role=Message.ROLE_ASSISTANT, content="是红色的"
+        )
+        from django.core.files.storage import default_storage
+        self.assertTrue(default_storage.exists(url[len("/media/"):]))
+
+        resp = self.client.delete(
+            f"/chat/api/conversations/{conversation.pk}/messages/{user_msg.pk}/delete/"
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(sorted(data["deleted"]), sorted([user_msg.pk, reply.pk]))  # 问答对都删
+        self.assertFalse(Message.objects.filter(pk=user_msg.pk).exists())
+        self.assertFalse(Message.objects.filter(pk=reply.pk).exists())
+        self.assertFalse(default_storage.exists(url[len("/media/"):]))              # 图片文件也删
+
+    def test_delete_assistant_message_alone(self):
+        conversation = Conversation.objects.create()
+        q = Message.objects.create(conversation=conversation, role=Message.ROLE_USER, content="问")
+        a = Message.objects.create(conversation=conversation, role=Message.ROLE_ASSISTANT, content="答")
+        resp = self.client.delete(
+            f"/chat/api/conversations/{conversation.pk}/messages/{a.pk}/delete/"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["deleted"], [a.pk])       # 只删回答本身
+        self.assertTrue(Message.objects.filter(pk=q.pk).exists())
+
+    def test_delete_rejects_message_of_other_conversation(self):
+        conv_a = Conversation.objects.create()
+        conv_b = Conversation.objects.create()
+        msg = Message.objects.create(conversation=conv_b, role=Message.ROLE_USER, content="x")
+        resp = self.client.delete(f"/chat/api/conversations/{conv_a.pk}/messages/{msg.pk}/delete/")
+        self.assertEqual(resp.status_code, 404)                # 不属于该会话 → 404

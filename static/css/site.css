@@ -672,6 +672,47 @@ body {
   margin-bottom: 4px;
 }
 
+/* 用户气泡右上角的删除按钮：桌面悬停出现，触屏常显 */
+.chat-msg {
+  position: relative;
+}
+
+.chat-msg-del {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0;
+  border: 1px solid #dee2e6;
+  border-radius: 50%;
+  background: #fff;
+  color: #868e96;
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+
+.chat-msg.user:hover .chat-msg-del {
+  opacity: 1;
+}
+
+.chat-msg-del:hover {
+  background: #fa5252;
+  border-color: #fa5252;
+  color: #fff;
+}
+
+@media (hover: none) {
+  .chat-msg-del {
+    opacity: 1;
+  }
+}
+
 /* 点击缩略图的全屏灯箱（点任意处关闭） */
 .chat-lightbox {
   position: fixed;

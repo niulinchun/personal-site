@@ -127,6 +127,34 @@ def api_conversation_delete(request, pk):
     return JsonResponse({"ok": True})
 
 
+@login_required
+@require_http_methods(["DELETE"])
+def api_message_delete(request, pk, mid):
+    """
+    删除单条问答：删掉指定的用户消息 + 紧随其后的助手回答（一对）。
+    附图的真实文件一并清理。消息不属于该会话返回 404。
+    """
+    conversation = get_object_or_404(Conversation, pk=pk)
+    msg = get_object_or_404(Message, pk=mid, conversation=conversation)
+
+    targets = [msg]
+    if msg.role == Message.ROLE_USER:
+        nxt = (
+            Message.objects.filter(conversation=conversation, id__gt=msg.id)
+            .order_by("id")
+            .first()
+        )
+        if nxt and nxt.role == Message.ROLE_ASSISTANT:
+            targets.append(nxt)
+
+    target_ids = [t.pk for t in targets]  # delete() 会把 pk 清掉，先收集
+    for m in targets:
+        if m.image:
+            m.image.delete(save=False)  # 先删真实文件
+        m.delete()
+    return JsonResponse({"ok": True, "deleted": target_ids})
+
+
 # ---------------------------------------------------------------------------
 # 截图上传 / 取消
 # ---------------------------------------------------------------------------

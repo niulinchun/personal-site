@@ -159,7 +159,7 @@
     document.body.appendChild(ov);
   }
 
-  function messageBubble(role, content, useMarkdown, image) {
+  function messageBubble(role, content, useMarkdown, image, msgId) {
     var div = document.createElement("div");
     div.className = "chat-msg " + role;
     if (image) {
@@ -181,6 +181,21 @@
         div.appendChild(text);
       }
     }
+    if (role === "user" && msgId) {
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "chat-msg-del";
+      delBtn.innerHTML = "&times;";
+      delBtn.title = "删除这条问答（回答与图片一并删除）";
+      delBtn.addEventListener("click", function () {
+        if (!confirm("删除这条问答？回答会一并删除，附图也同步清理，不可恢复。")) return;
+        requestJSON("/chat/api/conversations/" + state.currentId + "/messages/" + msgId + "/delete/",
+          { method: "DELETE" })
+          .then(function () { return switchConversation(state.currentId); })
+          .catch(function (err) { alert(err.message); });
+      });
+      div.appendChild(delBtn);
+    }
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return div;
@@ -193,7 +208,7 @@
     return requestJSON("/chat/api/conversations/" + id + "/messages/").then(function (data) {
       messagesEl.innerHTML = "";
       (data.items || []).forEach(function (m) {
-        messageBubble(m.role, m.content, true, m.image);
+        messageBubble(m.role, m.content, true, m.image, m.id);
       });
       if (!(data.items || []).length) {
         var tip = document.createElement("p");
@@ -536,6 +551,7 @@
 
     var buffered = [];
     var firstDelta = true;
+    var doneReload = false;   /* 正常结束后重载会话，让消息带上 id（删除按钮需要） */
 
     fetch("/chat/api/conversations/" + conversationId + "/messages/stream/", {
       method: "POST",
@@ -600,6 +616,7 @@
                 if (window.marked && full) {
                   assistantBubble.innerHTML = window.marked.parse(full);
                 }
+                doneReload = true;
               }
             });
           }
@@ -615,8 +632,8 @@
       sendBtn.disabled = false;
       shotBtn.disabled = false;
       assistantBubble.classList.remove("typing");
-      /* 首条消息会自动生成标题：刷新左侧列表 */
       refreshConvList();
+      if (doneReload) switchConversation(conversationId);  /* 消息重载出 id（删除按钮） */
     });
   }
 

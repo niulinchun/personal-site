@@ -23,6 +23,11 @@ urlpatterns = [
         views.api_message_stream,
         name="api_message_stream",
     ),
+    path(
+        "api/conversations/<int:pk>/messages/<int:mid>/delete/",
+        views.api_message_delete,
+        name="api_message_delete",
+    ),
     path("api/image/upload/", views.api_image_upload, name="api_image_upload"),
     path("api/image/delete/", views.api_image_delete, name="api_image_delete"),
 ]
